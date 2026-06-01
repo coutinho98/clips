@@ -1,0 +1,14 @@
+output/
+ollama/
+venv/
+temp/
+__pycache__/
+modules/__pycache__/
+.env
+*.mp4
+*.wav
+*.mp3
+*.webm
+*.mov
+*.avi
+*.mkv
