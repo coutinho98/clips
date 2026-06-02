@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from config import OPENAI_API_KEY
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
@@ -27,20 +29,27 @@ def _carregar_categorias():
 
 CATEGORIAS = _carregar_categorias()
 
-PROMPT_AVALIAR = """Voce e um editor de video viral. Analise o trecho abaixo e classifique que tipo de momento e.
+PROMPT_AVALIAR = """You are a viral video editor specializing in Brazilian Portuguese content. Analyze the transcript segment below (spoken in Portuguese) and classify what type of moment it is.
 
-Categorias: engracado, serio, emocionante, revelacao, polemico, opiniao_forte, surreal
+Categories: funny, serious, emotional, revelation, controversial, strong_opinion, surreal, confrontation, motivational, fear
 
-Responda APENAS com JSON:
-{"bom": true/false, "categoria": "tipo", "score_viral": 1-10, "titulo": "titulo curto", "hook_text": "FRASE REAL DO TRECHO", "motivo": "por que e bom"}
+Respond ONLY with valid JSON, no extra text:
+{"bom": true, "categoria": "type", "score_viral": 7, "titulo": "short title in Portuguese", "hook_text": "ACTUAL QUOTE FROM THE SEGMENT IN PORTUGUESE", "motivo": "brief reason in English"}
 
-Se nao for interessante: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": ""}"""
+Rules:
+- score_viral: 1-10 (be strict: most content is 1-4, only genuinely engaging moments get 7+)
+- hook_text: MUST be a real sentence extracted from the transcript, not invented
+- titulo: short catchy title in Portuguese
+- If not interesting: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": ""}"""
 
 
 def _usar_ollama():
     try:
-        r = requests.get(f"{OLLAMA_URL}/api/tags", timeout=2)
-        return r.status_code == 200
+        r = requests.get(f"{OLLAMA_URL}/api/tags", timeout=3)
+        if r.status_code != 200:
+            return False
+        modelos = [m.get("name", "").lower() for m in r.json().get("models", [])]
+        return any(OLLAMA_MODEL.lower() in m for m in modelos)
     except Exception:
         return False
 
@@ -54,8 +63,8 @@ def _chamar_ollama(system_prompt, user_content):
         ],
         "stream": False,
         "options": {
-            "temperature": 0.3,
-            "num_predict": 500,
+            "temperature": 0.2,
+            "num_predict": 800,
         }
     }
     resp = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=300)
@@ -72,8 +81,8 @@ def _chamar_openai(system_prompt, user_content):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ],
-        temperature=0.3,
-        max_tokens=500,
+        temperature=0.2,
+        max_tokens=800,
     )
     return resposta.choices[0].message.content.strip()
 
@@ -105,43 +114,9 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
         cats_count[cat] = cats_count.get(cat, 0) + 1
     for cat, count in sorted(cats_count.items(), key=lambda x: -x[1]):
         print(f"    {cat}: {count}")
-    print(f"  Avaliando com IA...")
+    print(f"  Avaliando com IA (paralelo)...")
 
-    avaliados = []
-    for i, cand in enumerate(candidatos):
-        texto = cand["texto"]
-        min_i = int(cand["inicio_seg"] // 60)
-        seg_i = int(cand["inicio_seg"] % 60)
-        cat_preliminar = cand.get("categoria", "?")
-        print(f"    [{i + 1}/{len(candidatos)}] {min_i:02d}:{seg_i:02d} ({cat_preliminar})...", end="", flush=True)
-
-        try:
-            conteudo = _chamar_ia(PROMPT_AVALIAR, texto, ollama_disponivel)
-            resultado = _parsear_resposta_bruta(conteudo)
-            if isinstance(resultado, list):
-                resultado = resultado[0] if resultado else {}
-            if not isinstance(resultado, dict):
-                resultado = {}
-
-            resultado["inicio_seg"] = cand["inicio_seg"]
-            resultado["fim_seg"] = cand["fim_seg"]
-
-            score = resultado.get("score_viral") or 0
-            if resultado.get("bom", False) or score >= 5:
-                resultado["tipo"] = resultado.get("categoria", cat_preliminar)
-                resultado["tags"] = ["reels", "viral", "fyp", "shorts", "trending"]
-                resultado["descricao"] = "#reels #viral #fyp #shorts #trending"
-                if not resultado.get("hook_text"):
-                    resultado["hook_text"] = _hook_do_texto(texto)
-                if not resultado.get("titulo"):
-                    resultado["titulo"] = texto[:40].strip() + "..."
-                avaliados.append(resultado)
-                print(f" OK ({score}/10)")
-            else:
-                print(f" descartado ({score}/10)")
-        except Exception as e:
-            print(f" ERRO: {e}")
-            continue
+    avaliados = _avaliar_candidatos_paralelo(candidatos, ollama_disponivel)
 
     avaliados.sort(key=lambda x: x.get("score_viral") or 0, reverse=True)
     avaliados = _validar_e_corrigir(avaliados, segmentos)
@@ -157,6 +132,54 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
     return avaliados
 
 
+def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, max_workers=4):
+    avaliados = []
+    total = len(candidatos)
+
+    def _avaliar_um(i, cand):
+        texto = cand["texto"]
+        min_i = int(cand["inicio_seg"] // 60)
+        seg_i = int(cand["inicio_seg"] % 60)
+        cat_preliminar = cand.get("categoria", "?")
+        label = f"[{i + 1}/{total}] {min_i:02d}:{seg_i:02d} ({cat_preliminar})"
+
+        try:
+            conteudo = _chamar_ia(PROMPT_AVALIAR, texto, ollama_disponivel)
+            resultado = _parsear_resposta_bruta(conteudo)
+            if isinstance(resultado, list):
+                resultado = resultado[0] if resultado else {}
+            if not isinstance(resultado, dict):
+                resultado = {}
+
+            resultado["inicio_seg"] = cand["inicio_seg"]
+            resultado["fim_seg"] = cand["fim_seg"]
+
+            score = resultado.get("score_viral") or 0
+            if resultado.get("bom", False) or score >= 6:
+                resultado["tipo"] = resultado.get("categoria", cat_preliminar)
+                resultado["tags"] = ["reels", "viral", "fyp", "shorts", "trending"]
+                resultado["descricao"] = "#reels #viral #fyp #shorts #trending"
+                if not resultado.get("hook_text"):
+                    resultado["hook_text"] = _hook_do_texto(texto)
+                if not resultado.get("titulo"):
+                    resultado["titulo"] = texto[:40].strip() + "..."
+                return (label, resultado, f" OK ({score}/10)")
+            else:
+                return (label, None, f" descartado ({score}/10)")
+        except Exception as e:
+            return (label, None, f" ERRO: {e}")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_avaliar_um, i, cand): i for i, cand in enumerate(candidatos)}
+        for future in as_completed(futures):
+            label, resultado, status = future.result()
+            print(f"    {label}...{status}")
+            if resultado is not None:
+                avaliados.append(resultado)
+
+    return avaliados
+
+
 def _gerar_candidatos(segmentos, picos_audio, max_candidatos):
     duracao_total = segmentos[-1]["fim"] - segmentos[0]["inicio"]
     candidatos = []
@@ -165,8 +188,10 @@ def _gerar_candidatos(segmentos, picos_audio, max_candidatos):
     if picos_audio:
         for pico in picos_audio:
             centro = (pico["inicio_seg"] + pico["fim_seg"]) / 2.0
-            inicio = max(0, centro - 45)
-            fim = inicio + 60
+            pico_dur = pico["fim_seg"] - pico["inicio_seg"]
+            janela = min(max(pico_dur * 3, 30), 90)
+            inicio = max(0, centro - janela / 2)
+            fim = inicio + janela
             chave = int(inicio // 30)
             if chave in usados:
                 continue
@@ -183,18 +208,27 @@ def _gerar_candidatos(segmentos, picos_audio, max_candidatos):
                 "peso": peso + 5,
             })
 
-    passo = 60
+    passo = 45
     for t in range(0, int(duracao_total), passo):
         chave = int(t // 30)
         if chave in usados:
             continue
         inicio = float(t)
-        fim = inicio + 60
-        texto = _texto_no_intervalo(segmentos, inicio, fim)
-        if len(texto.split()) < 8:
+        texto_curto = _texto_no_intervalo(segmentos, inicio, inicio + 30)
+        texto_longo = _texto_no_intervalo(segmentos, inicio, inicio + 60)
+        cat_c, peso_c = _classificar_por_palavras(texto_curto)
+        cat_l, peso_l = _classificar_por_palavras(texto_longo)
+
+        if peso_c >= peso_l and peso_c >= 1:
+            texto, cat, peso = texto_curto, cat_c, peso_c
+            fim = inicio + 30
+        elif peso_l >= 1:
+            texto, cat, peso = texto_longo, cat_l, peso_l
+            fim = inicio + 60
+        else:
             continue
-        cat, peso = _classificar_por_palavras(texto)
-        if peso < 1:
+
+        if len(texto.split()) < 8:
             continue
         usados.add(chave)
         candidatos.append({
@@ -211,10 +245,22 @@ def _gerar_candidatos(segmentos, picos_audio, max_candidatos):
 
 def _classificar_por_palavras(texto):
     texto_lower = texto.lower()
+    texto_lower = re.sub(r'[^\w\s]', ' ', texto_lower)
+    palavras_texto = set(texto_lower.split())
     melhor_cat = None
     melhor_peso = 0
     for cat, config in CATEGORIAS.items():
-        hits = sum(1 for p in config["palavras"] if p in texto_lower)
+        hits = 0
+        for p in config["palavras"]:
+            p_clean = re.sub(r'[^\w\s]', ' ', p.lower()).strip()
+            if not p_clean:
+                continue
+            if ' ' in p_clean:
+                if p_clean in texto_lower:
+                    hits += 1
+            else:
+                if p_clean in palavras_texto:
+                    hits += 1
         peso = hits * config["peso"]
         if peso > melhor_peso:
             melhor_peso = peso
@@ -232,24 +278,34 @@ def _chamar_ia(system_prompt, user_content, usar_ollama):
 def _parsear_resposta_bruta(conteudo):
     conteudo = conteudo.replace("```json", "").replace("```", "").strip()
 
-    inicio = conteudo.find("{")
-    if inicio == -1:
-        return []
-    conteudo = conteudo[inicio:]
+    brace_count = 0
+    json_start = -1
+    for i, c in enumerate(conteudo):
+        if c == '{':
+            if brace_count == 0:
+                json_start = i
+            brace_count += 1
+        elif c == '}':
+            brace_count -= 1
+            if brace_count == 0 and json_start >= 0:
+                candidate = conteudo[json_start:i + 1]
+                try:
+                    dados = json.loads(candidate)
+                    if isinstance(dados, dict):
+                        return dados.get("cortes", [dados] if dados.get("titulo") or dados.get("bom") is not None else [])
+                except json.JSONDecodeError:
+                    continue
 
-    try:
-        dados = json.loads(conteudo)
-    except json.JSONDecodeError:
-        fim_obj = conteudo.rfind("}")
-        if fim_obj > inicio:
-            try:
-                dados = json.loads(conteudo[:fim_obj + 1])
-            except json.JSONDecodeError:
-                return []
-        else:
-            return []
+    return []
 
-    return dados.get("cortes", [dados] if isinstance(dados, dict) and dados.get("titulo") else [])
+
+HOOKS_GENERICOS = {
+    "ASSISTA ATE O FIM", "VOCE PRECISA VER", "ISSO E INSANO",
+    "PRESTA ATENCAO", "OLHA SO ISSO", "BORA VER ISSO",
+    "FRASE DO VIDEO", "ASSISTA", "WATCH THIS", "MUST SEE",
+    "ASSISTA ATE O FINAL", "NAO ACREDITE", "ISSO E BIZARRO",
+    "OLHA ISSO", "PRESTA ATENCAO NESSA",
+}
 
 
 def _validar_e_corrigir(cortes, segmentos):
@@ -278,12 +334,8 @@ def _validar_e_corrigir(cortes, segmentos):
         if "hook_text" not in c or not c["hook_text"]:
             c["hook_text"] = _hook_do_texto(texto_seg)
         else:
-            genericos = [
-                "ASSISTA ATE O FIM", "VOCE PRECISA VER", "ISSO E INSANO",
-                "PRESTA ATENCAO", "OLHA SO ISSO", "BORA VER ISSO",
-                "FRASE DO VIDEO",
-            ]
-            if c["hook_text"].upper().strip().rstrip(":") in [g.upper() for g in genericos]:
+            hook_normalizado = re.sub(r'[:.!?…\s]+', '', c["hook_text"].upper().strip())
+            if any(hook_normalizado == re.sub(r'[:.!?…\s]+', '', g) for g in HOOKS_GENERICOS):
                 c["hook_text"] = _hook_do_texto(texto_seg)
 
         if "tipo" not in c:
@@ -301,7 +353,7 @@ def _validar_e_corrigir(cortes, segmentos):
 
 
 def _hook_do_texto(texto):
-    sentencas = [s.strip() for s in texto.replace("!", "!|").replace("?", "?|").replace(".", ".|").split("|") if len(s.strip()) > 5]
+    sentencas = [s.strip() for s in re.split(r'[.!?]', texto) if len(s.strip()) > 5]
     if sentencas:
         return sentencas[0].upper()[:40]
     return "ASSISTA"
@@ -399,9 +451,16 @@ def _remover_sobreposicao_temporal(cortes, distancia_minima=30):
     if not cortes:
         return cortes
 
-    cortes.sort(key=lambda x: x["inicio_seg"])
-    resultado = [cortes[0]]
-    for c in cortes[1:]:
-        if c["inicio_seg"] - resultado[-1]["inicio_seg"] >= distancia_minima:
+    cortes.sort(key=lambda x: x.get("score_viral") or 0, reverse=True)
+
+    resultado = []
+    for c in cortes:
+        sobreposto = False
+        for s in resultado:
+            overlap = min(c["fim_seg"], s["fim_seg"]) - max(c["inicio_seg"], s["inicio_seg"])
+            if overlap > distancia_minima * 0.5:
+                sobreposto = True
+                break
+        if not sobreposto:
             resultado.append(c)
     return resultado
