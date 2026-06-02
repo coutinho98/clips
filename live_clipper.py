@@ -136,14 +136,19 @@ def processar_live(
             )
             cortes.extend(cortes_heur)
 
-        if detectar_por in ("ia", "ambos") and OPENAI_API_KEY:
+        if detectar_por in ("ia", "ambos"):
             try:
-                from modules.highlights_detector import detectar_highlights, detectar_highlights_por_audio
-                print("  Analisando com IA (GPT)...")
-                cortes_ia = detectar_highlights(
-                    transcricao, picos_audio=momentos_audio, max_cortes=max_cortes,
-                )
-                cortes.extend(cortes_ia)
+                from modules.highlights_detector import detectar_highlights, _usar_ollama
+                tem_ia = _usar_ollama() or OPENAI_API_KEY
+                if tem_ia:
+                    provedor = "Ollama" if _usar_ollama() else "OpenAI GPT-4o-mini"
+                    print(f"  Analisando com IA ({provedor})...")
+                    cortes_ia = detectar_highlights(
+                        transcricao, picos_audio=momentos_audio, max_cortes=max_cortes,
+                    )
+                    cortes.extend(cortes_ia)
+                else:
+                    print("  [AVISO] Nem Ollama nem OpenAI disponiveis para IA")
             except Exception as e:
                 print(f"  [AVISO] IA falhou: {e}")
 
@@ -318,6 +323,8 @@ def _obter_duracao_video(caminho_video):
 def _remover_duplicatas(cortes, distancia_min=20):
     if not cortes:
         return cortes
+
+    cortes.sort(key=lambda x: x.get("score_viral") or 0, reverse=True)
 
     vistos = []
     unicos = []
