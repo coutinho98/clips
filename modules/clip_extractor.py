@@ -123,9 +123,9 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
         if srt_path:
             legendas_filter = (
                 f",subtitles={srt_path}"
-                f":force_style='FontName=DejaVu Sans Bold,FontSize=24,"
+                f":force_style='FontName=Fira Sans SemiBold,FontSize=13,"
                 f"PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,"
-                f"Outline=3,Alignment=2,MarginV=180'"
+                f"Outline=1,Shadow=1,Alignment=2,MarginV=30'"
             )
 
     hook_filter = ""
@@ -134,9 +134,9 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
         if hook_path:
             hook_filter = (
                 f",subtitles={hook_path}"
-                f":force_style='FontName=DejaVu Sans Bold,FontSize=28,"
+                f":force_style='FontName=Fira Sans SemiBold,FontSize=12,"
                 f"PrimaryColour=&H00D7FF&,OutlineColour=&H000000&,"
-                f"Outline=3,Alignment=6,MarginV={int(RESOLUCAO[1] * 0.82)}'"
+                f"Outline=1,Alignment=6,MarginV={int(RESOLUCAO[1] * 0.80)}'"
             )
 
     if vf_parts:
@@ -396,6 +396,80 @@ def _probe_video(caminho):
 
 
 def _gerar_srt_corte(segmentos, inicio_global, fim_global):
+    srt_path = os.path.join(PASTA_TEMP, "corte_legendas.srt")
+
+    def fmt(seg):
+        h = int(seg // 3600)
+        m = int((seg % 3600) // 60)
+        s = int(seg % 60)
+        ms = int((seg % 1) * 1000)
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    palavras = []
+    for seg in segmentos:
+        if seg["fim"] < inicio_global or seg["inicio"] > fim_global:
+            continue
+
+        if seg.get("words"):
+            for w in seg["words"]:
+                w_inicio = w.get("inicio", w.get("start", 0))
+                w_fim = w.get("fim", w.get("end", 0))
+                w_texto = w.get("texto", w.get("word", "")).strip()
+                if w_texto:
+                    palavras.append({"inicio": w_inicio, "fim": w_fim, "texto": w_texto})
+
+    if not palavras:
+        return _gerar_srt_corte_segmentos(segmentos, inicio_global, fim_global)
+
+    duracao_corte = fim_global - inicio_global
+    chunk_max = max(5, min(8, int(duracao_corte / 8)))
+    chunk_dur_max = 2.5
+
+    entradas = []
+    idx = 1
+    chunk_words = []
+    chunk_inicio = None
+
+    for p in palavras:
+        rel_inicio = p["inicio"] - inicio_global
+        rel_fim = p["fim"] - inicio_global
+
+        if rel_fim < 0 or rel_inicio > duracao_corte:
+            continue
+
+        if chunk_inicio is None:
+            chunk_inicio = rel_inicio
+
+        chunk_words.append(p["texto"])
+        chunk_dur = rel_fim - chunk_inicio
+
+        if len(chunk_words) >= chunk_max or chunk_dur >= chunk_dur_max:
+            texto_chunk = " ".join(chunk_words)
+            entradas.append(f"{idx}")
+            entradas.append(f"{fmt(chunk_inicio)} --> {fmt(rel_fim)}")
+            entradas.append(texto_chunk)
+            entradas.append("")
+            idx += 1
+            chunk_words = []
+            chunk_inicio = None
+
+    if chunk_words:
+        last_fim = palavras[-1]["fim"] - inicio_global
+        entradas.append(f"{idx}")
+        entradas.append(f"{fmt(chunk_inicio)} --> {fmt(last_fim)}")
+        entradas.append(" ".join(chunk_words))
+        entradas.append("")
+
+    if idx == 1:
+        return None
+
+    with open(srt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(entradas))
+
+    return srt_path
+
+
+def _gerar_srt_corte_segmentos(segmentos, inicio_global, fim_global):
     srt_path = os.path.join(PASTA_TEMP, "corte_legendas.srt")
 
     def fmt(seg):
