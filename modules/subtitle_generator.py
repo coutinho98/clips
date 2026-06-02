@@ -9,8 +9,11 @@ from moviepy import (
 from config import RESOLUCAO, PASTA_TEMP, PASTA_OUTPUT
 
 SAFE_ZONE_TOP_PCT = 0.15
-SAFE_ZONE_BOTTOM_PCT = 0.12
 REELS_MAX_DURACAO = 90
+FONT_SIZE = 14
+MAX_CHARS_PER_LINE = 56
+MAX_LINES = 2
+TEXT_MARGIN_BOTTOM = 50
 
 
 def gerar_legendas_estilizadas(segmentos, inicio_global, fim_global,
@@ -24,8 +27,8 @@ def gerar_legendas_estilizadas(segmentos, inicio_global, fim_global,
     w, h = RESOLUCAO
 
     try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 42)
-        font_hook = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
+        font = ImageFont.truetype("/usr/share/fonts/opentype/fira/FiraSans-SemiBold.otf", FONT_SIZE)
+        font_hook = ImageFont.truetype("/usr/share/fonts/opentype/fira/FiraSans-SemiBold.otf", 22)
     except Exception:
         font = ImageFont.load_default()
         font_hook = font
@@ -45,18 +48,15 @@ def gerar_legendas_estilizadas(segmentos, inicio_global, fim_global,
         img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
-        safe_bottom_y = int(h * (1 - SAFE_ZONE_BOTTOM_PCT)) - 60
-        safe_top_y = int(h * SAFE_ZONE_TOP_PCT) + 10
+        safe_top_y = int(h * 0.15) + 10
 
         for seg in segmentos_filtrados:
             if seg["inicio"] <= tempo_atual <= seg["fim"]:
                 texto = seg["texto"]
-                linhas = _quebrar_texto_legenda(texto, max_chars=26)
+                linhas = _quebrar_texto_legenda(texto, max_chars=MAX_CHARS_PER_LINE)
                 texto_formatado = "\n".join(linhas)
 
-                _desenhar_texto_estilo(
-                    draw, texto_formatado, font, w, safe_bottom_y, estilo
-                )
+                _desenhar_legenda_filme(draw, texto_formatado, font, w, h, estilo)
                 break
 
         if tempo_atual < 3.5 and segmentos_filtrados:
@@ -67,41 +67,43 @@ def gerar_legendas_estilizadas(segmentos, inicio_global, fim_global,
     return frames_dir
 
 
-def _desenhar_texto_estilo(draw, texto, font, largura, y_pos, estilo):
+def _desenhar_legenda_filme(draw, texto, font, largura, altura, estilo):
     bbox = draw.multiline_textbbox((0, 0), texto, font=font)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
     x = (largura - tw) // 2
+    y = altura - TEXT_MARGIN_BOTTOM - th
 
-    if estilo == "neon":
-        for dx, dy in [(-2, -2), (2, -2), (-2, 2), (2, 2), (-1, 0), (1, 0), (0, -1), (0, 1)]:
-            draw.multiline_text((x + dx, y_pos + dy), texto, fill=(0, 200, 255, 180), font=font)
-        draw.multiline_text((x, y_pos), texto, fill="white", font=font)
+    pad_x, pad_y = 12, 6
+    draw.rounded_rectangle(
+        [(x - pad_x, y - pad_y), (x + tw + pad_x, y + th + pad_y)],
+        radius=4,
+        fill=(0, 0, 0, 160),
+    )
+
+    draw.multiline_text((x + 1, y + 1), texto, fill=(0, 0, 0, 200), font=font)
+    draw.multiline_text((x, y), texto, fill="white", font=font)
 
     elif estilo == "karaoke":
-        draw.multiline_text((x + 3, y_pos + 3), texto, fill="black", font=font)
-        draw.multiline_text((x, y_pos), texto, fill=(255, 255, 0), font=font)
+        draw.multiline_text((x + 2, text_y + 2), texto, fill=(0, 0, 0, 180), font=font)
+        draw.multiline_text((x, text_y), texto, fill=(255, 255, 80), font=font)
 
     elif estilo == "box":
-        padding = 16
-        box_x1 = max(0, x - padding)
-        box_y1 = y_pos - padding
-        box_x2 = min(largura, x + tw + padding)
-        box_y2 = y_pos + th + padding
-
+        box_pad = 14
         draw.rounded_rectangle(
-            [(box_x1, box_y1), (box_x2, box_y2)],
-            radius=10,
-            fill=(0, 0, 0, 180),
+            [(x - box_pad, text_y - box_pad),
+             (x + tw + box_pad, text_y + th + box_pad)],
+            radius=8,
+            fill=(0, 0, 0, 240),
         )
-        draw.multiline_text((x, y_pos), texto, fill="white", font=font)
+        draw.multiline_text((x, text_y), texto, fill="white", font=font)
 
     elif estilo == "sombra":
-        draw.multiline_text((x + 3, y_pos + 3), texto, fill=(0, 0, 0, 200), font=font)
-        draw.multiline_text((x, y_pos), texto, fill="white", font=font)
+        draw.multiline_text((x + 2, text_y + 2), texto, fill=(0, 0, 0, 200), font=font)
+        draw.multiline_text((x, text_y), texto, fill="white", font=font)
 
     else:
-        draw.multiline_text((x, y_pos), texto, fill="white", font=font)
+        draw.multiline_text((x, text_y), texto, fill="white", font=font)
 
 
 def _desenhar_hook_barra(draw, font, largura, y_top):
@@ -113,31 +115,33 @@ def _desenhar_hook_barra(draw, font, largura, y_top):
     )
 
 
-def _quebrar_texto_legenda(texto, max_chars=26):
+def _quebrar_texto_legenda(texto, max_chars=MAX_CHARS_PER_LINE):
     palavras = texto.split()
     linhas = []
     linha_atual = ""
 
     for palavra in palavras:
-        if len(linha_atual) + len(palavra) + 1 <= max_chars:
-            if linha_atual:
-                linha_atual += " " + palavra
-            else:
-                linha_atual = palavra
+        if len(palavra) > max_chars:
+            palavra = palavra[:max_chars - 1] + "…"
+
+        if not linha_atual:
+            linha_atual = palavra
+        elif len(linha_atual) + 1 + len(palavra) <= max_chars:
+            linha_atual += " " + palavra
         else:
-            if linha_atual:
-                linhas.append(linha_atual)
+            linhas.append(linha_atual)
             linha_atual = palavra
 
     if linha_atual:
         linhas.append(linha_atual)
 
-    if len(linhas) > 2:
-        linhas = linhas[:2]
-        if len(linhas[-1]) + 3 <= max_chars:
-            linhas[-1] += "..."
+    if len(linhas) > MAX_LINES:
+        linhas = linhas[:MAX_LINES]
+        ultima = linhas[-1]
+        if len(ultima) + 1 <= max_chars:
+            linhas[-1] = ultima.rstrip(".,;:!?") + "…"
         else:
-            linhas[-1] = linhas[-1][:-3] + "..."
+            linhas[-1] = ultima[:max_chars - 1] + "…"
 
     return linhas
 
