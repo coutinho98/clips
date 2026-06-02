@@ -16,7 +16,7 @@ PASTA_OUTPUT = os.path.join(os.path.dirname(__file__), "output")
 PASTA_ASSETS = os.path.join(os.path.dirname(__file__), "assets")
 
 WHISPER_METODO = os.getenv("WHISPER_METODO", "local")
-WHISPER_MODELO = os.getenv("WHISPER_MODELO", "base")
+WHISPER_MODELO = os.getenv("WHISPER_MODELO", "medium")
 LIVE_CLIPPER_MAX_CORTES = int(os.getenv("LIVE_CLIPPER_MAX_CORTES", "5"))
 LIVE_CLIPPER_DURACAO_MIN = int(os.getenv("LIVE_CLIPPER_DURACAO_MIN", "30"))
 LIVE_CLIPPER_DURACAO_MAX = int(os.getenv("LIVE_CLIPPER_DURACAO_MAX", "90"))
