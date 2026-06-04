@@ -1,8 +1,7 @@
 import json
-from openai import OpenAI
-from config import OPENAI_API_KEY, NICHO
+from config import NICHO, OPENAI_CHAT_MODEL, criar_cliente_openai
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = criar_cliente_openai()
 
 PROMPT_SISTEMA = f"""Você é um roteirista de vídeos curtos (YouTube Shorts / TikTok) sobre {NICHO}.
 Gere conteúdo no seguinte formato JSON:
@@ -21,7 +20,7 @@ Regras:
 
 def gerar_roteiro():
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=OPENAI_CHAT_MODEL,
         messages=[
             {"role": "system", "content": PROMPT_SISTEMA},
             {"role": "user", "content": f"Gere um roteiro sobre {NICHO}. Seja criativo e surpreendente."}

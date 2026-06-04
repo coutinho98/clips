@@ -1,4 +1,5 @@
 import os
+import json
 import subprocess
 import tempfile
 from config import RESOLUCAO, PASTA_OUTPUT, PASTA_TEMP
@@ -14,9 +15,23 @@ def detectar_faces_crop(caminho_video, inicio_seg, fim_seg, target_w, target_h):
 
     print(f"  Detectando faces para crop inteligente...")
 
+    probe = _probe_video(caminho_video)
+    codec = probe.get("codec_name", "")
+    orig_w = int(probe.get("width", 1920))
+    orig_h = int(probe.get("height", 1080))
+
+    # OpenCV/FFmpeg often trips over AV1 hardware decode paths on Linux.
+    # For AV1, prefer extracting sampled frames with ffmpeg software decode.
+    if codec == "av1":
+        return _detectar_faces_crop_ffmpeg(
+            caminho_video, inicio_seg, fim_seg, orig_w, orig_h
+        )
+
     cap = cv2.VideoCapture(caminho_video)
     if not cap.isOpened():
-        return None
+        return _detectar_faces_crop_ffmpeg(
+            caminho_video, inicio_seg, fim_seg, orig_w, orig_h
+        )
 
     fps_video = cap.get(cv2.CAP_PROP_FPS) or 30
     frame_inicio = int(inicio_seg * fps_video)
@@ -61,19 +76,69 @@ def detectar_faces_crop(caminho_video, inicio_seg, fim_seg, target_w, target_h):
     if not x_positions:
         return None
 
-    orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) if cap.isOpened() else 0
-    probe = _probe_video(caminho_video)
-    orig_w = int(probe.get("width", 1920))
-    orig_h = int(probe.get("height", 1080))
-
     media_x = sum(x_positions) // len(x_positions)
-    media_y = sum(y_positions) // len(y_positions)
-
     crop_w = min(int(orig_h * 9 / 16), orig_w)
     crop_x = media_x - crop_w // 2
     crop_x = max(0, min(crop_x, orig_w - crop_w))
 
     print(f"  Face detectada: crop centralizado em x={crop_x} (baseado em {len(x_positions)} frames)")
+    return crop_x
+
+
+def _detectar_faces_crop_ffmpeg(caminho_video, inicio_seg, fim_seg, orig_w, orig_h):
+    try:
+        import cv2
+    except ImportError:
+        return None
+
+    duracao = max(0.0, fim_seg - inicio_seg)
+    if duracao <= 0:
+        return None
+
+    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    face_cascade = cv2.CascadeClassifier(cascade_path)
+    sample_count = min(12, max(4, int(duracao // 8) or 4))
+    x_positions = []
+
+    with tempfile.TemporaryDirectory(dir=PASTA_TEMP) as tmpdir:
+        for idx in range(sample_count):
+            frac = (idx + 0.5) / sample_count
+            timestamp = inicio_seg + (duracao * frac)
+            frame_path = os.path.join(tmpdir, f"frame_{idx:02d}.jpg")
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", str(timestamp),
+                "-i", caminho_video,
+                "-frames:v", "1",
+                "-update", "1",
+                frame_path,
+            ]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if proc.returncode != 0 or not os.path.exists(frame_path):
+                continue
+
+            frame = cv2.imread(frame_path)
+            if frame is None:
+                continue
+
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60)
+            )
+            if len(faces) > 0:
+                maior = max(faces, key=lambda f: f[2] * f[3])
+                fx, _, fw, _ = maior
+                x_positions.append(fx + fw // 2)
+
+    if not x_positions:
+        print("  [AVISO] Nao foi possivel detectar faces; usando crop central")
+        return None
+
+    media_x = sum(x_positions) // len(x_positions)
+    crop_w = min(int(orig_h * 9 / 16), orig_w)
+    crop_x = media_x - crop_w // 2
+    crop_x = max(0, min(crop_x, orig_w - crop_w))
+    print(f"  Face detectada via ffmpeg: crop centralizado em x={crop_x} (baseado em {len(x_positions)} frames)")
     return crop_x
 
 
@@ -371,25 +436,22 @@ def _probe_video(caminho):
     try:
         result = subprocess.run(
             ["ffprobe", "-v", "error",
-             "-show_entries", "format=duration:stream=width,height",
-             "-of", "csv=p=0", caminho],
+             "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name,width,height:format=duration",
+             "-of", "json", caminho],
             capture_output=True, text=True,
         )
-        lines = result.stdout.strip().split("\n")
+        payload = json.loads(result.stdout or "{}")
         info = {}
-        for line in lines:
-            parts = line.split(",")
-            if len(parts) >= 3:
-                try:
-                    info["width"] = int(parts[0]) if parts[0] else None
-                    info["height"] = int(parts[1]) if parts[1] else None
-                except ValueError:
-                    pass
-            if len(parts) == 1:
-                try:
-                    info["duration"] = float(parts[0])
-                except ValueError:
-                    pass
+        streams = payload.get("streams") or []
+        if streams:
+            stream = streams[0]
+            info["codec_name"] = stream.get("codec_name")
+            info["width"] = stream.get("width")
+            info["height"] = stream.get("height")
+        fmt = payload.get("format") or {}
+        if fmt.get("duration") is not None:
+            info["duration"] = float(fmt["duration"])
         return info
     except Exception:
         return {}

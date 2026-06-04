@@ -1,6 +1,13 @@
 import os
 import json
-from config import PASTA_TEMP, OPENAI_API_KEY
+from config import (
+    PASTA_TEMP,
+    OPENAI_API_KEY,
+    OPENAI_CHAT_MODEL,
+    OPENAI_TRANSCRIBE_MODEL,
+    criar_cliente_openai,
+    nome_provedor_openai,
+)
 
 
 def _detectar_device():
@@ -13,21 +20,20 @@ def _detectar_device():
     return "cpu", "int8"
 
 
-def transcrever_com_faster_whisper(caminho_audio, modelo="small", idioma="pt"):
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError:
-        print("  [!] faster-whisper nao instalado, tentando whisper normal...")
-        return transcrever_com_whisper_local(caminho_audio, modelo, idioma)
+def _erro_cuda_incompativel(exc):
+    msg = str(exc).lower()
+    indicadores = (
+        "libcublas",
+        "cublas",
+        "cuda",
+        "cudnn",
+        "cannot be loaded",
+        "unable to load",
+    )
+    return any(ind in msg for ind in indicadores)
 
-    device, compute_type = _detectar_device()
-    print(f"  Carregando faster-whisper '{modelo}' (device={device}, compute={compute_type})...")
-    try:
-        model = WhisperModel(modelo, device=device, compute_type=compute_type)
-    except Exception:
-        print(f"  [!] Falhou com {compute_type}, tentando auto...")
-        model = WhisperModel(modelo, device="cpu", compute_type="auto")
 
+def _coletar_segmentos_faster_whisper(model, caminho_audio, idioma):
     print(f"  Transcrevendo audio (faster-whisper)...")
     segments_iter, info = model.transcribe(
         caminho_audio,
@@ -57,6 +63,34 @@ def transcrever_com_faster_whisper(caminho_audio, modelo="small", idioma="pt"):
             "texto": texto,
             "words": [{"inicio": w.start, "fim": w.end, "texto": w.word} for w in seg.words] if seg.words else [],
         })
+
+    return segmentos
+
+
+def transcrever_com_faster_whisper(caminho_audio, modelo="small", idioma="pt"):
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        print("  [!] faster-whisper nao instalado, tentando whisper normal...")
+        return transcrever_com_whisper_local(caminho_audio, modelo, idioma)
+
+    device, compute_type = _detectar_device()
+    print(f"  Carregando faster-whisper '{modelo}' (device={device}, compute={compute_type})...")
+    try:
+        model = WhisperModel(modelo, device=device, compute_type=compute_type)
+    except Exception:
+        print(f"  [!] Falhou com {compute_type}, tentando auto...")
+        model = WhisperModel(modelo, device="cpu", compute_type="auto")
+
+    try:
+        segmentos = _coletar_segmentos_faster_whisper(model, caminho_audio, idioma)
+    except Exception as exc:
+        if device != "cuda" or not _erro_cuda_incompativel(exc):
+            raise
+
+        print("  [!] CUDA indisponivel em tempo de execucao, refazendo em CPU...")
+        model = WhisperModel(modelo, device="cpu", compute_type="auto")
+        segmentos = _coletar_segmentos_faster_whisper(model, caminho_audio, idioma)
 
     texto_completo = " ".join(s["texto"] for s in segmentos)
     duracao = segmentos[-1]["fim"] if segmentos else 0
@@ -110,15 +144,13 @@ def transcrever_com_whisper_local(caminho_audio, modelo="base", idioma="pt"):
 
 
 def transcrever_com_whisper_api(caminho_audio, idioma="pt"):
-    from openai import OpenAI
+    client = criar_cliente_openai()
 
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
-    print(f"  Transcrevendo via OpenAI Whisper API...")
+    print(f"  Transcrevendo via {nome_provedor_openai()} ({OPENAI_TRANSCRIBE_MODEL})...")
 
     with open(caminho_audio, "rb") as f:
         resposta = client.audio.transcriptions.create(
-            model="whisper-1",
+            model=OPENAI_TRANSCRIBE_MODEL,
             file=f,
             language=idioma,
             response_format="verbose_json",
@@ -208,7 +240,7 @@ def corrigir_transcricao(transcricao):
         print("  [!] Sem IA disponivel para corrigir transcricao, usando original")
         return transcricao
 
-    provedor = "Ollama" if usar_ollama else "OpenAI"
+    provedor = "Ollama" if usar_ollama else nome_provedor_openai()
     print(f"  Corrigindo transcricao com {provedor} ({len(segmentos)} segmentos)...")
 
     batch_size = 10
@@ -245,10 +277,9 @@ def corrigir_transcricao(transcricao):
                 resp.raise_for_status()
                 correcao = resp.json()["message"]["content"].strip()
             else:
-                from openai import OpenAI
-                client = OpenAI(api_key=OPENAI_API_KEY)
+                client = criar_cliente_openai()
                 resposta = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=OPENAI_CHAT_MODEL,
                     messages=[
                         {"role": "system", "content": PROMPT_CORRECAO},
                         {"role": "user", "content": bloco},

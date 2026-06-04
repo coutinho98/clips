@@ -3,7 +3,7 @@ import os
 import re
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from config import OPENAI_API_KEY
+from config import OPENAI_API_KEY, OPENAI_CHAT_MODEL, criar_cliente_openai, nome_provedor_openai
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
@@ -73,10 +73,9 @@ def _chamar_ollama(system_prompt, user_content):
 
 
 def _chamar_openai(system_prompt, user_content):
-    from openai import OpenAI
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    client = criar_cliente_openai()
     resposta = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=OPENAI_CHAT_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
@@ -97,7 +96,7 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
     if ollama_disponivel:
         print(f"  Usando Ollama local ({OLLAMA_MODEL})...")
     elif OPENAI_API_KEY:
-        print(f"  Usando OpenAI GPT-4o-mini...")
+        print(f"  Usando {nome_provedor_openai()} ({OPENAI_CHAT_MODEL})...")
     else:
         print(f"  [ERRO] Nem Ollama nem OpenAI disponiveis")
         return []

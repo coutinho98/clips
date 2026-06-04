@@ -20,6 +20,14 @@ cp .env.example .env
 # Edite o .env com suas API keys
 ```
 
+Se você usar um servidor compatível com OpenAI, como LM Studio, configure também:
+
+```env
+OPENAI_BASE_URL=http://127.0.0.1:1234/v1
+OPENAI_CHAT_MODEL=nome-do-modelo-no-servidor
+OPENAI_TRANSCRIBE_MODEL=whisper-1
+```
+
 ## API Keys
 
 | Serviço | Onde conseguir | Obrigatório? |
