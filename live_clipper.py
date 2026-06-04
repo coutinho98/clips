@@ -35,11 +35,11 @@ def processar_live(
     resume=True,
 ):
     print("=" * 55)
-    print("  DARK CHANNEL - Cortes Automaticos (Reels)")
+    print("  DARK CHANNEL - Cortes Automáticos (Reels)")
     print("=" * 55)
 
     if not url and not caminho_video:
-        print("\n  [ERRO] Forneça uma URL ou caminho para o video da live.")
+        print("\n  [ERRO] Forneça uma URL ou caminho para o vídeo da live.")
         print("  Uso: python live_clipper.py --url <URL>")
         print("       python live_clipper.py --video <caminho>")
         return
@@ -58,7 +58,7 @@ def processar_live(
     # --- ETAPA 1: DOWNLOAD ---
     if resume and tem_etapa(job_id, "download"):
         caminho_video = obter_etapa(job_id, "download")["caminho"]
-        print(f"\n[1/6] [CACHE] Video ja baixado: {caminho_video}")
+        print(f"\n[1/6] [CACHE] Vídeo já baixado: {caminho_video}")
     else:
         if url and not caminho_video:
             print(f"\n[1/6] Baixando live (melhor qualidade)...")
@@ -67,7 +67,7 @@ def processar_live(
                 print("  [ERRO] Falha ao baixar a live.")
                 return
         else:
-            print(f"\n[1/6] Usando video local: {caminho_video}")
+            print(f"\n[1/6] Usando vídeo local: {caminho_video}")
 
         if resume:
             salvar_cache(job_id, "download", {"caminho": caminho_video, "url": url})
@@ -75,17 +75,17 @@ def processar_live(
     # --- ETAPA 1.5: INFO ---
     duracao_video = _obter_duracao_video(caminho_video)
     if duracao_video > 0:
-        print(f"  Duracao: {duracao_video / 60:.1f} min | Max cortes: {max_cortes}")
+        print(f"  Duração: {duracao_video / 60:.1f} min | Max cortes: {max_cortes}")
 
-    # --- ETAPA 2: EXTRAIR AUDIO ---
+    # --- ETAPA 2: EXTRAIR ÁUDIO ---
     if resume and tem_etapa(job_id, "audio"):
         caminho_audio = obter_etapa(job_id, "audio")["caminho"]
-        print(f"\n[2/6] [CACHE] Audio ja extraido: {caminho_audio}")
+        print(f"\n[2/6] [CACHE] Áudio já extraído: {caminho_audio}")
     else:
-        print(f"\n[2/6] Extraindo audio do video...")
+        print(f"\n[2/6] Extraindo áudio do vídeo...")
         caminho_audio = extrair_audio_do_video(caminho_video)
         if not caminho_audio:
-            print("  [ERRO] Falha ao extrair audio.")
+            print("  [ERRO] Falha ao extrair áudio.")
             return
         if resume:
             salvar_cache(job_id, "audio", {"caminho": caminho_audio})
@@ -93,30 +93,30 @@ def processar_live(
     # --- ETAPA 3: TRANSCREVER ---
     if resume and tem_etapa(job_id, "transcricao"):
         transc_path = obter_etapa(job_id, "transcricao")["caminho"]
-        print(f"\n[3/6] [CACHE] Transcricao ja existe: {transc_path}")
+        print(f"\n[3/6] [CACHE] Transcrição já existe: {transc_path}")
         with open(transc_path, "r", encoding="utf-8") as f:
             transcricao = json.load(f)
     else:
-        print(f"\n[3/6] Transcrevendo audio (metodo: {metodo_transcricao})...")
+        print(f"\n[3/6] Transcrevendo áudio (método: {metodo_transcricao})...")
         transcricao = transcrever_audio(
             caminho_audio,
             metodo=metodo_transcricao,
             modelo=modelo_whisper,
         )
         if not transcricao:
-            print("  [ERRO] Falha na transcricao.")
+            print("  [ERRO] Falha na transcrição.")
             return
         transc_path = salvar_transcricao(transcricao)
         gerar_srt(transcricao["segmentos"])
         if resume:
             salvar_cache(job_id, "transcricao", {"caminho": transc_path})
 
-    # --- ETAPA 4: ANALISAR AUDIO ---
+    # --- ETAPA 4: ANALISAR ÁUDIO ---
     if resume and tem_etapa(job_id, "picos_audio"):
         momentos_audio = obter_etapa(job_id, "picos_audio")["picos"]
-        print(f"\n[4/6] [CACHE] {len(momentos_audio)} picos de audio")
+        print(f"\n[4/6] [CACHE] {len(momentos_audio)} picos de áudio")
     else:
-        print(f"\n[4/6] Analisando audio para detectar picos...")
+        print(f"\n[4/6] Analisando áudio para detectar picos...")
         momentos_audio = detectar_momentos_interessantes(caminho_audio)
         if resume:
             salvar_cache(job_id, "picos_audio", {"picos": momentos_audio})
@@ -130,7 +130,7 @@ def processar_live(
         cortes = []
 
         if detectar_por in ("heuristicas", "ambos"):
-            print("  Analisando com heuristicas (100% gratis)...")
+            print("  Analisando com heurísticas (100% grátis)...")
             cortes_heur = detectar_highlights_heuristico(
                 transcricao, momentos_audio, max_cortes=max_cortes,
             )
@@ -148,7 +148,7 @@ def processar_live(
                     )
                     cortes.extend(cortes_ia)
                 else:
-                    print("  [AVISO] Nem Ollama nem OpenAI disponiveis para IA")
+                    print("  [AVISO] Nem Ollama nem OpenAI disponíveis para IA")
             except Exception as e:
                 print(f"  [AVISO] IA falhou: {e}")
 
@@ -173,7 +173,7 @@ def processar_live(
     print(f"\n  {len(cortes)} cortes selecionados:")
     for i, c in enumerate(cortes, 1):
         score = c.get("score_viral", "?")
-        titulo = c.get("titulo", "sem titulo")
+        titulo = c.get("titulo", "sem título")
         hook = c.get("hook_text", "")
         duracao = c.get("fim_seg", 0) - c.get("inicio_seg", 0)
         print(f"    {i}. [{score}/10] {titulo} ({duracao:.0f}s)")
@@ -189,7 +189,7 @@ def processar_live(
             json.dump(previews, f, ensure_ascii=False, indent=2)
 
         print(f"\n  Previews gerados: {preview_path}")
-        print("  Use sem --preview para gerar os videos.")
+        print("  Use sem --preview para gerar os vídeos.")
         return
 
     # --- ETAPA 6: EXTRAIR CORTES ---
@@ -262,14 +262,14 @@ def processar_live(
         else:
             print(f"\n  [ERRO] {r['titulo']}: {r.get('erro', 'desconhecido')}")
 
-    print(f"\n  Relatorio: {relatorio_path}")
+    print(f"\n  Relatório: {relatorio_path}")
     print(f"  Metadata:  {metadata_path}")
     print("=" * 55)
 
 
 def processar_batch(arquivo_urls, max_cortes=5, **kwargs):
     if not os.path.exists(arquivo_urls):
-        print(f"  [ERRO] Arquivo nao encontrado: {arquivo_urls}")
+        print(f"  [ERRO] Arquivo não encontrado: {arquivo_urls}")
         return
 
     with open(arquivo_urls, "r") as f:
@@ -279,14 +279,14 @@ def processar_batch(arquivo_urls, max_cortes=5, **kwargs):
         print("  [ERRO] Nenhuma URL no arquivo")
         return
 
-    print(f"\n  BATCH: {len(urls)} videos para processar")
+    print(f"\n  BATCH: {len(urls)} vídeos para processar")
     print("=" * 55)
 
     resultados_batch = []
 
     for i, url in enumerate(urls, 1):
         print(f"\n{'=' * 55}")
-        print(f"  VIDEO {i}/{len(urls)}: {url[:60]}...")
+        print(f"  VÍDEO {i}/{len(urls)}: {url[:60]}...")
         print("=" * 55)
 
         try:
@@ -345,15 +345,15 @@ def _remover_duplicatas(cortes, distancia_min=20):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Dark Channel - Cortes Automaticos de Lives para Reels"
+        description="Dark Channel - Cortes Automáticos de Lives para Reels"
     )
 
     parser.add_argument("--url", type=str, help="URL da live (Twitch, YouTube, etc)")
-    parser.add_argument("--video", type=str, help="Caminho para arquivo de video local")
+    parser.add_argument("--video", type=str, help="Caminho para arquivo de vídeo local")
     parser.add_argument("--batch", type=str, help="Arquivo txt com lista de URLs")
-    parser.add_argument("-n", "--max-cortes", type=int, default=12, help="Numero maximo de cortes (default: 12)")
+    parser.add_argument("-n", "--max-cortes", type=int, default=12, help="Número máximo de cortes (default: 12)")
     parser.add_argument("--transcricao", type=str, default="local",
-                        choices=["local", "api"], help="Metodo de transcricao (default: local)")
+                        choices=["local", "api"], help="Método de transcrição (default: local)")
     parser.add_argument("--modelo-whisper", type=str, default="base",
                         choices=["tiny", "base", "small", "medium", "large"],
                         help="Modelo Whisper (default: base)")
@@ -364,12 +364,12 @@ if __name__ == "__main__":
                         help="Estilo das legendas (default: neon)")
     parser.add_argument("--detectar-por", type=str, default="ia",
                         choices=["heuristicas", "ia", "audio", "ambos"],
-                        help="Metodo de deteccao (default: ia - usa GPT pra entender o conteudo)")
-    parser.add_argument("--bg-music", type=str, help="Caminho para musica de fundo")
+                        help="Método de detecção (default: ia - usa GPT pra entender o conteúdo)")
+    parser.add_argument("--bg-music", type=str, help="Caminho para música de fundo")
     parser.add_argument("--bg-music-volume", type=float, default=0.15,
-                        help="Volume da musica de fundo (0.0 a 1.0, default: 0.15)")
+                        help="Volume da música de fundo (0.0 a 1.0, default: 0.15)")
     parser.add_argument("--preview", action="store_true",
-                        help="Gerar so thumbnails (sem encodar video)")
+                        help="Gerar só thumbnails (sem encodar vídeo)")
     parser.add_argument("--upload", action="store_true", help="Auto-upload Instagram")
     parser.add_argument("--no-cache", action="store_true", help="Desativar cache/resume")
 

@@ -62,7 +62,7 @@ def montar_video(caminhos_imagens, caminhos_audios, titulo="video"):
     video = video.with_duration(min(video.duration, audio_concat.duration))
 
     caminho_saida = f"{PASTA_OUTPUT}/{titulo.replace(' ', '_')}.mp4"
-    print("  Encodando video final...")
+    print("  Encodando vídeo final...")
     video.write_videofile(
         caminho_saida,
         fps=24,

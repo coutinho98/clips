@@ -8,14 +8,14 @@ from config import PASTA_OUTPUT, PASTA_TEMP
 def upload_reel(caminho_video, titulo, descricao="", tags=None,
                 ig_user_id=None, ig_access_token=None):
     if not ig_user_id or not ig_access_token:
-        print("  [ERRO] IG_USER_ID e IG_ACCESS_TOKEN necessarios")
+        print("  [ERRO] IG_USER_ID e IG_ACCESS_TOKEN necessários")
         return None
 
     print(f"  Upload Instagram Reels: {titulo}")
 
     tamanho_mb = os.path.getsize(caminho_video) / (1024 * 1024)
     if tamanho_mb > 100:
-        print(f"  [ERRO] Video muito grande ({tamanho_mb:.1f} MB). Limite: 100 MB")
+        print(f"  [ERRO] Vídeo muito grande ({tamanho_mb:.1f} MB). Limite: 100 MB")
         return None
 
     caption = titulo
@@ -34,7 +34,7 @@ def upload_reel(caminho_video, titulo, descricao="", tags=None,
         "access_token": ig_access_token,
     }
 
-    print("  [ERRO] Upload direto requer URL publica do video.")
+    print("  [ERRO] Upload direto requer URL pública do vídeo.")
     print("  Use upload_reel_local() para upload via container.")
 
     return None
@@ -54,7 +54,7 @@ def upload_reel_local(caminho_video, titulo, descricao="", tags=None,
 
     tamanho_mb = os.path.getsize(caminho_video) / (1024 * 1024)
     if tamanho_mb > 100:
-        print(f"  [ERRO] Video muito grande ({tamanho_mb:.1f} MB). Limite: 100 MB")
+        print(f"  [ERRO] Vídeo muito grande ({tamanho_mb:.1f} MB). Limite: 100 MB")
         return None
 
     caption = titulo

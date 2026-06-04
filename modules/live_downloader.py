@@ -63,14 +63,14 @@ def baixar_live(url, qualidade=None, pasta_saida=None):
                      "stream=width,height,codec_name", "-of", "csv=p=0", caminho],
                     capture_output=True, text=True,
                 )
-                print(f"  Download concluido: {tamanho_mb:.1f} MB")
+                print(f"  Download concluído: {tamanho_mb:.1f} MB")
                 print(f"  Info: {probe.stdout.strip()}")
                 return caminho
 
-        print("  [ERRO] Arquivo de video nao encontrado apos download")
+        print("  [ERRO] Arquivo de vídeo não encontrado após download")
         return None
     except FileNotFoundError:
-        print("  [ERRO] yt-dlp nao encontrado. Instale com: pip install yt-dlp")
+        print("  [ERRO] yt-dlp não encontrado. Instale com: pip install yt-dlp")
         return None
     except subprocess.TimeoutExpired:
         print("  [ERRO] Timeout no download (excedeu 2 horas)")
@@ -96,7 +96,7 @@ def baixar_audio_live(url, pasta_saida=None):
         url,
     ]
 
-    print(f"  Extraindo audio da live: {url}")
+    print(f"  Extraindo áudio da live: {url}")
 
     try:
         resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
@@ -109,10 +109,10 @@ def baixar_audio_live(url, pasta_saida=None):
             if f.startswith("live_audio.") and f.endswith(".mp3"):
                 caminho = os.path.join(pasta_saida, f)
                 tamanho_mb = os.path.getsize(caminho) / (1024 * 1024)
-                print(f"  Audio extraido: {caminho} ({tamanho_mb:.1f} MB)")
+                print(f"  Áudio extraído: {caminho} ({tamanho_mb:.1f} MB)")
                 return caminho
 
         return None
     except FileNotFoundError:
-        print("  [ERRO] yt-dlp nao encontrado. Instale com: pip install yt-dlp")
+        print("  [ERRO] yt-dlp não encontrado. Instale com: pip install yt-dlp")
         return None

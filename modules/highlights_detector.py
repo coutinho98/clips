@@ -90,7 +90,7 @@ def _chamar_openai(system_prompt, user_content):
 def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
     segmentos = transcricao.get("segmentos", [])
     if not segmentos:
-        print("  [ERRO] Nenhum segmento na transcricao")
+        print("  [ERRO] Nenhum segmento na transcrição")
         return []
 
     ollama_disponivel = _usar_ollama()
@@ -99,7 +99,7 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
     elif OPENAI_API_KEY:
         print(f"  Usando OpenAI GPT-4o-mini...")
     else:
-        print(f"  [ERRO] Nem Ollama nem OpenAI disponiveis")
+        print(f"  [ERRO] Nem Ollama nem OpenAI disponíveis")
         return []
 
     candidatos = _gerar_candidatos(segmentos, picos_audio, max_cortes * 4)
@@ -115,7 +115,6 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
     for cat, count in sorted(cats_count.items(), key=lambda x: -x[1]):
         print(f"    {cat}: {count}")
     print(f"  Avaliando com IA (paralelo)...")
-
     avaliados = _avaliar_candidatos_paralelo(candidatos, ollama_disponivel)
 
     avaliados.sort(key=lambda x: x.get("score_viral") or 0, reverse=True)
@@ -440,7 +439,7 @@ def detectar_highlights_por_audio(picos_audio, transcricao, max_cortes=5,
     cortes = _remover_sobreposicao_temporal(cortes, distancia_minima=duracao_min)
     cortes = cortes[:max_cortes]
 
-    print(f"  {len(cortes)} cortes gerados por analise de audio")
+    print(f"  {len(cortes)} cortes gerados por análise de áudio")
     return cortes
 
 

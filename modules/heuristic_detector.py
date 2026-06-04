@@ -47,11 +47,11 @@ def detectar_highlights_heuristico(transcricao, picos_audio=None, max_cortes=5,
         return []
 
     print(f"  Analisando {len(segmentos)} segmentos...")
-    print(f"  [1/3] Mapeando energia do audio por segmento...")
+    print(f"  [1/3] Mapeando energia do áudio por segmento...")
 
     energia_seg = _energia_por_segmento(segmentos, picos_audio)
 
-    print(f"  [2/3] Encontrando momentos de contraste (audio + fala)...")
+    print(f"  [2/3] Encontrando momentos de contraste (áudio + fala)...")
 
     momentos_quentes = _encontrar_momentos_quentes(segmentos, energia_seg)
 

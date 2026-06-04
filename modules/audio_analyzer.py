@@ -12,7 +12,7 @@ def extrair_audio_do_video(caminho_video, pasta_saida=None):
     os.makedirs(pasta_saida, exist_ok=True)
     caminho_audio = os.path.join(pasta_saida, "audio_extraido.wav")
 
-    print(f"  Extraindo audio do video (via ffmpeg)...")
+    print(f"  Extraindo áudio do vídeo (via ffmpeg)...")
 
     cmd = [
         "ffmpeg", "-y",
@@ -30,14 +30,14 @@ def extrair_audio_do_video(caminho_video, pasta_saida=None):
             print(f"  [ERRO FFmpeg] {resultado.stderr[-500:]}")
             return None
     except subprocess.TimeoutExpired:
-        print("  [ERRO] Timeout ao extrair audio")
+        print("  [ERRO] Timeout ao extrair áudio")
         return None
     except FileNotFoundError:
-        print("  [ERRO] ffmpeg nao encontrado. Instale com: sudo apt install ffmpeg")
+        print("  [ERRO] ffmpeg não encontrado. Instale com: sudo apt install ffmpeg")
         return None
 
     if not os.path.exists(caminho_audio):
-        print("  [ERRO] Arquivo de audio nao foi criado")
+        print("  [ERRO] Arquivo de áudio não foi criado")
         return None
 
     tamanho_mb = os.path.getsize(caminho_audio) / (1024 * 1024)
@@ -53,12 +53,12 @@ def extrair_audio_do_video(caminho_video, pasta_saida=None):
     except Exception:
         pass
 
-    print(f"  Audio extraido: {duracao_seg:.1f}s ({duracao_seg / 60:.1f} min) ({tamanho_mb:.1f} MB)")
+    print(f"  Áudio extraído: {duracao_seg:.1f}s ({duracao_seg / 60:.1f} min) ({tamanho_mb:.1f} MB)")
     return caminho_audio
 
 
 def analisar_picos_energia(caminho_audio, janela_ms=2000, threshold_sigma=1.5):
-    print(f"  Analisando picos de energia no audio...")
+    print(f"  Analisando picos de energia no áudio...")
 
     audio = AudioSegment.from_file(caminho_audio)
     audio = audio.set_channels(1)
@@ -121,7 +121,7 @@ def analisar_picos_energia(caminho_audio, janela_ms=2000, threshold_sigma=1.5):
 
 
 def analisar_silencios(caminho_audio, silencio_db=-40, min_silencio_ms=1000):
-    print(f"  Detectando silencios...")
+    print(f"  Detectando silêncios...")
 
     audio = AudioSegment.from_file(caminho_audio)
     audio = audio.set_channels(1)
@@ -157,7 +157,7 @@ def analisar_silencios(caminho_audio, silencio_db=-40, min_silencio_ms=1000):
                 "duracao_ms": duracao,
             })
 
-    print(f"  Encontrados {len(silencios)} trechos de silencio")
+    print(f"  Encontrados {len(silencios)} trechos de silêncio")
     return silencios
 
 
@@ -179,7 +179,7 @@ def detectar_momentos_interessantes(caminho_audio, duracao_corte_min=30, duracao
 
     momentos = _remover_sobreposicao(momentos, distancia_minima=duracao_corte_min)
 
-    print(f"  {len(momentos)} momentos candidatos apos remocao de sobreposicao")
+    print(f"  {len(momentos)} momentos candidatos após remoção de sobreposição")
     return momentos
 
 

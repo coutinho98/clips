@@ -11,7 +11,7 @@ async def _gerar_audio_async(texto, caminho_saida, timeout=TIMEOUT_POR_PARTE):
         await asyncio.wait_for(communicate.save(caminho_saida), timeout=timeout)
         return True
     except asyncio.TimeoutError:
-        print(f"    [TIMEOUT] Geracao excedeu {timeout}s, tentando salvar parcial...")
+        print(f"    [TIMEOUT] Geração excedeu {timeout}s, tentando salvar parcial...")
         try:
             communicate = edge_tts.Communicate(texto, VOZ)
             await asyncio.wait_for(communicate.save(caminho_saida), timeout=timeout * 2)
@@ -30,7 +30,7 @@ def gerar_narracao_partes(partes_roterio):
         resultados = []
         for i, parte in enumerate(partes_roterio):
             caminho = f"{PASTA_TEMP}/parte_{i}.mp3"
-            print(f"    [{i+1}/{total}] Gerando audio... ", end="", flush=True)
+            print(f"    [{i+1}/{total}] Gerando áudio... ", end="", flush=True)
 
             ok = await _gerar_audio_async(parte, caminho)
 

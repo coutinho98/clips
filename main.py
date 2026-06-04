@@ -43,7 +43,7 @@ def main():
             f.write("TAGS: \n")
             f.write("IMAGENS: \n")
             f.write("---\n")
-            f.write("Cole o texto da narracao aqui...\n")
+            f.write("Cole o texto da narração aqui...\n")
         return
 
     with open(roteiro_path, "r", encoding="utf-8") as f:
@@ -87,23 +87,23 @@ def main():
     print("=" * 50)
     print("  DARK CHANNEL BOT - Pipeline Automatizado")
     print("=" * 50)
-    print(f"\n  Titulo: {titulo}")
+    print(f"\n  Título: {titulo}")
     print(f"  Partes do roteiro: {len(partes)}")
 
-    print(f"\n[1/3] Gerando narracao (TTS)... ({len(partes)} partes)")
+    print(f"\n[1/3] Gerando narração (TTS)... ({len(partes)} partes)")
     print("  Isso pode levar alguns minutos...")
     audios = gerar_narracao_partes(partes)
-    print(f"  {len(audios)} arquivos de audio gerados com sucesso")
+    print(f"  {len(audios)} arquivos de áudio gerados com sucesso")
 
     if not audios:
-        print("\n[ERRO] Nenhum audio foi gerado. Verifique sua conexao com a internet.")
+        print("\n[ERRO] Nenhum áudio foi gerado. Verifique sua conexão com a internet.")
         return
 
     print("\n[2/3] Buscando imagens...")
     imagens = buscar_imagens_para_roteiro(termos_busca)
     print(f"  {len(imagens)} imagens obtidas")
 
-    print("\n[3/3] Montando video (isso demora um pouco)...")
+    print("\n[3/3] Montando vídeo (isso demora um pouco)...")
     titulo_arquivo = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{titulo[:30]}"
     video_path = montar_video(imagens, audios, titulo_arquivo)
 
@@ -118,7 +118,7 @@ def main():
         }, f, ensure_ascii=False, indent=2)
 
     print("\n" + "=" * 50)
-    print(f"  VIDEO GERADO: {video_path}")
+    print(f"  VÍDEO GERADO: {video_path}")
     print(f"  METADADOS: {meta_path}")
     print("=" * 50)
 

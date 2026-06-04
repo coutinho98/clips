@@ -14,11 +14,11 @@ from modules.video_assembler import montar_video
 
 
 def gerar_multiplos(quantidade=5):
-    print(f"Gerando {quantidade} videos em lote...\n")
+    print(f"Gerando {quantidade} vídeos em lote...\n")
 
     resultados = []
     for i in range(quantidade):
-        print(f"\n--- Video {i+1}/{quantidade} ---")
+        print(f"\n--- Vídeo {i+1}/{quantidade} ---")
         try:
             dados = gerar_roteiro()
             audios = gerar_narracao_partes(dados["roteiro"])
@@ -54,8 +54,8 @@ def gerar_multiplos(quantidade=5):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Dark Channel Bot - Geracao em lote")
-    parser.add_argument("-n", "--quantidade", type=int, default=5, help="Quantidade de videos")
+    parser = argparse.ArgumentParser(description="Dark Channel Bot - Geração em lote")
+    parser.add_argument("-n", "--quantidade", type=int, default=5, help="Quantidade de vídeos")
     args = parser.parse_args()
 
     gerar_multiplos(args.quantidade)
