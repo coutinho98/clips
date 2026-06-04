@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import tempfile
 from config import RESOLUCAO, PASTA_OUTPUT, PASTA_TEMP
@@ -87,7 +88,6 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
         print(f"  [REELS] Limitado a {REELS_MAX_DURACAO}s")
 
     print(f"  Extraindo corte: {inicio_seg:.1f}s - {fim_seg:.1f}s ({fim_seg - inicio_seg:.1f}s)")
-
     nome_arquivo = titulo.replace(" ", "_").replace("/", "_")[:50]
     caminho_saida = os.path.join(PASTA_OUTPUT, f"corte_{nome_arquivo}.mp4")
 
@@ -123,9 +123,9 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
         if srt_path:
             legendas_filter = (
                 f",subtitles={srt_path}"
-                f":force_style='FontName=Fira Sans SemiBold,FontSize=13,"
+                f":force_style='FontName=Fira Sans SemiBold,FontSize=10,"
                 f"PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,"
-                f"Outline=1,Shadow=1,Alignment=2,MarginV=30'"
+                f"Outline=1,Shadow=1,Alignment=2,MarginV=25'"
             )
 
     hook_filter = ""
@@ -134,7 +134,7 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
         if hook_path:
             hook_filter = (
                 f",subtitles={hook_path}"
-                f":force_style='FontName=Fira Sans SemiBold,FontSize=12,"
+                f":force_style='FontName=Fira Sans SemiBold,FontSize=9,"
                 f"PrimaryColour=&H00D7FF&,OutlineColour=&H000000&,"
                 f"Outline=1,Alignment=6,MarginV={int(RESOLUCAO[1] * 0.80)}'"
             )
@@ -422,15 +422,16 @@ def _gerar_srt_corte(segmentos, inicio_global, fim_global):
         return _gerar_srt_corte_segmentos(segmentos, inicio_global, fim_global)
 
     duracao_corte = fim_global - inicio_global
-    chunk_max = max(5, min(8, int(duracao_corte / 8)))
-    chunk_dur_max = 2.5
+    chunk_max = max(4, min(6, int(duracao_corte / 10)))
+    chunk_dur_max = 2.0
 
     entradas = []
     idx = 1
     chunk_words = []
     chunk_inicio = None
+    chunk_idx_start = 0
 
-    for p in palavras:
+    for p_idx, p in enumerate(palavras):
         rel_inicio = p["inicio"] - inicio_global
         rel_fim = p["fim"] - inicio_global
 
@@ -439,26 +440,26 @@ def _gerar_srt_corte(segmentos, inicio_global, fim_global):
 
         if chunk_inicio is None:
             chunk_inicio = rel_inicio
+            chunk_idx_start = p_idx
 
         chunk_words.append(p["texto"])
         chunk_dur = rel_fim - chunk_inicio
 
-        if len(chunk_words) >= chunk_max or chunk_dur >= chunk_dur_max:
-            texto_chunk = " ".join(chunk_words)
-            entradas.append(f"{idx}")
-            entradas.append(f"{fmt(chunk_inicio)} --> {fmt(rel_fim)}")
-            entradas.append(texto_chunk)
-            entradas.append("")
-            idx += 1
+        is_last_word = (p_idx == len(palavras) - 1)
+        should_break = len(chunk_words) >= chunk_max or chunk_dur >= chunk_dur_max
+
+        if should_break or is_last_word:
+            texto_limpo = _limpar_texto_chunk(chunk_words, p_idx == len(palavras) - 1)
+
+            if texto_limpo:
+                entradas.append(f"{idx}")
+                entradas.append(f"{fmt(chunk_inicio)} --> {fmt(rel_fim)}")
+                entradas.append(texto_limpo)
+                entradas.append("")
+                idx += 1
+
             chunk_words = []
             chunk_inicio = None
-
-    if chunk_words:
-        last_fim = palavras[-1]["fim"] - inicio_global
-        entradas.append(f"{idx}")
-        entradas.append(f"{fmt(chunk_inicio)} --> {fmt(last_fim)}")
-        entradas.append(" ".join(chunk_words))
-        entradas.append("")
 
     if idx == 1:
         return None
@@ -495,6 +496,11 @@ def _gerar_srt_corte_segmentos(segmentos, inicio_global, fim_global):
         if not texto:
             continue
 
+        texto = _limpar_pontuacao_legenda(texto)
+
+        if not texto:
+            continue
+
         entradas.append(f"{idx}")
         entradas.append(f"{fmt(rel_inicio)} --> {fmt(rel_fim)}")
         entradas.append(texto)
@@ -508,6 +514,50 @@ def _gerar_srt_corte_segmentos(segmentos, inicio_global, fim_global):
         f.write("\n".join(entradas))
 
     return srt_path
+
+
+def _limpar_texto_chunk(palavras, is_last_chunk=False):
+    palavras_limpas = []
+    for i, p in enumerate(palavras):
+        is_last = (i == len(palavras) - 1)
+        if is_last:
+            if p.endswith(('?', '!')):
+                palavras_limpas.append(p)
+            elif p.endswith('.'):
+                palavras_limpas.append(p.rstrip('.') + '...')
+            elif p.endswith('...'):
+                palavras_limpas.append(p)
+            elif p.endswith(','):
+                palavras_limpas.append(p.rstrip(','))
+            else:
+                palavras_limpas.append(p.rstrip('.,;:'))
+        else:
+            palavras_limpas.append(p.rstrip('.,;:'))
+
+    texto = " ".join(palavras_limpas)
+    texto = re.sub(r'\s{2,}', ' ', texto).strip()
+    texto = re.sub(r'\.{4,}', '...', texto)
+
+    if len(texto) <= 1:
+        return ""
+
+    return texto
+
+
+def _limpar_pontuacao_legenda(texto):
+    texto = texto.strip()
+    if not texto:
+        return ""
+
+    palavras = texto.split()
+    if len(palavras) <= 2:
+        texto = texto.rstrip('.')
+        if texto.endswith(',') or texto.endswith(';'):
+            texto = texto[:-1]
+
+    texto = re.sub(r'\.{2,}', '...', texto)
+
+    return texto.strip()
 
 
 def _gerar_hook_srt(hook_text, duracao_total):
