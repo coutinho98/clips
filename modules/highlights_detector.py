@@ -34,13 +34,15 @@ PROMPT_AVALIAR = """You are a viral video editor specializing in Brazilian Portu
 Categories: funny, serious, emotional, revelation, controversial, strong_opinion, surreal, confrontation, motivational, fear
 
 Respond ONLY with valid JSON, no extra text:
-{"bom": true, "categoria": "type", "score_viral": 7, "titulo": "short title in Portuguese", "hook_text": "ACTUAL QUOTE FROM THE SEGMENT IN PORTUGUESE", "motivo": "brief reason in English"}
+{"bom": true, "categoria": "type", "score_viral": 7, "titulo": "short title in Portuguese", "hook_text": "ACTUAL QUOTE FROM THE SEGMENT IN PORTUGUESE", "motivo": "brief reason in English", "tema": "main topic in 3 words max"}
 
 Rules:
 - score_viral: 1-10 (be strict: most content is 1-4, only genuinely engaging moments get 7+)
 - hook_text: MUST be a real sentence extracted from the transcript, not invented
 - titulo: short catchy title in Portuguese
-- If not interesting: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": ""}"""
+- tema: identify the specific topic/theme discussed (e.g. "futebol", "relacionamento", "medo de altura")
+- If not interesting: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": "", "tema": ""}
+- IMPORTANT: Each clip must be about a DIFFERENT topic/conversation. Reject segments that discuss the same thing as others."""
 
 
 def _usar_ollama():
@@ -119,6 +121,7 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
 
     avaliados.sort(key=lambda x: x.get("score_viral") or 0, reverse=True)
     avaliados = _validar_e_corrigir(avaliados, segmentos)
+    avaliados = _remover_temas_duplicados(avaliados)
     avaliados = avaliados[:max_cortes]
 
     print(f"\n  {len(avaliados)} cortes aprovados:")
@@ -181,65 +184,161 @@ def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, max_workers=4):
 
 def _gerar_candidatos(segmentos, picos_audio, max_candidatos):
     duracao_total = segmentos[-1]["fim"] - segmentos[0]["inicio"]
+    inicio_abs = segmentos[0]["inicio"]
     candidatos = []
-    usados = set()
+    temas_vistos = []
 
-    if picos_audio:
-        for pico in picos_audio:
-            centro = (pico["inicio_seg"] + pico["fim_seg"]) / 2.0
-            pico_dur = pico["fim_seg"] - pico["inicio_seg"]
-            janela = min(max(pico_dur * 3, 30), 90)
-            inicio = max(0, centro - janela / 2)
-            fim = inicio + janela
-            chave = int(inicio // 30)
-            if chave in usados:
-                continue
-            usados.add(chave)
-            texto = _texto_no_intervalo(segmentos, inicio, fim)
-            if len(texto.split()) < 8:
-                continue
-            cat, peso = _classificar_por_palavras(texto)
-            candidatos.append({
-                "inicio_seg": inicio,
-                "fim_seg": fim,
-                "texto": texto,
-                "categoria": cat or "audio_peak",
-                "peso": peso + 5,
-            })
+    blocos_tematicos = _segmentar_por_topico(segmentos)
 
-    passo = 45
-    for t in range(0, int(duracao_total), passo):
-        chave = int(t // 30)
-        if chave in usados:
-            continue
-        inicio = float(t)
-        texto_curto = _texto_no_intervalo(segmentos, inicio, inicio + 30)
-        texto_longo = _texto_no_intervalo(segmentos, inicio, inicio + 60)
-        cat_c, peso_c = _classificar_por_palavras(texto_curto)
-        cat_l, peso_l = _classificar_por_palavras(texto_longo)
-
-        if peso_c >= peso_l and peso_c >= 1:
-            texto, cat, peso = texto_curto, cat_c, peso_c
-            fim = inicio + 30
-        elif peso_l >= 1:
-            texto, cat, peso = texto_longo, cat_l, peso_l
-            fim = inicio + 60
-        else:
-            continue
-
+    for bloco in blocos_tematicos:
+        texto = bloco["texto"]
         if len(texto.split()) < 8:
             continue
-        usados.add(chave)
+
+        cat, peso = _classificar_por_palavras(texto)
+
+        energia = 0
+        centro = (bloco["inicio_seg"] + bloco["fim_seg"]) / 2.0
+        if picos_audio:
+            for pico in picos_audio:
+                if pico["inicio_seg"] <= centro <= pico["fim_seg"]:
+                    energia = max(energia, pico.get("energia_relacionada", 0))
+        peso += energia * 1.5
+
+        candidatos.append({
+            "inicio_seg": bloco["inicio_seg"],
+            "fim_seg": bloco["fim_seg"],
+            "texto": texto,
+            "categoria": cat or "momento",
+            "peso": peso,
+        })
+
+    for pico in (picos_audio or []):
+        centro = (pico["inicio_seg"] + pico["fim_seg"]) / 2.0
+        pico_dur = pico["fim_seg"] - pico["inicio_seg"]
+        janela = min(max(pico_dur * 3, 30), 90)
+        inicio = max(0, centro - janela / 2)
+        fim = inicio + janela
+
+        sobreposto = False
+        for c in candidatos:
+            overlap = min(c["fim_seg"], fim) - max(c["inicio_seg"], inicio)
+            if overlap > 15:
+                sobreposto = True
+                break
+        if sobreposto:
+            continue
+
+        texto = _texto_no_intervalo(segmentos, inicio, fim)
+        if len(texto.split()) < 8:
+            continue
+        cat, peso = _classificar_por_palavras(texto)
         candidatos.append({
             "inicio_seg": inicio,
             "fim_seg": fim,
             "texto": texto,
-            "categoria": cat,
-            "peso": peso,
+            "categoria": cat or "audio_peak",
+            "peso": peso + 5,
         })
 
     candidatos.sort(key=lambda x: x["peso"], reverse=True)
     return candidatos[:max_candidatos]
+
+
+def _segmentar_por_topico(segmentos, silencio_gap=3.0, max_dur=90, min_dur=20):
+    if not segmentos:
+        return []
+
+    blocos = []
+    bloco_inicio = segmentos[0]["inicio"]
+    bloco_fim = segmentos[0]["fim"]
+    bloco_textos = [segmentos[0]["texto"].strip()]
+
+    for i in range(1, len(segmentos)):
+        seg = segmentos[i]
+        gap = seg["inicio"] - segmentos[i - 1]["fim"]
+        duracao_atual = seg["fim"] - bloco_inicio
+
+        if gap >= silencio_gap or duracao_atual >= max_dur:
+            texto = " ".join(t for t in bloco_textos if t)
+            if len(texto.split()) >= 5:
+                blocos.append({
+                    "inicio_seg": bloco_inicio,
+                    "fim_seg": bloco_fim,
+                    "texto": texto,
+                })
+
+            bloco_inicio = seg["inicio"]
+            bloco_fim = seg["fim"]
+            bloco_textos = [seg["texto"].strip()]
+        else:
+            bloco_fim = seg["fim"]
+            bloco_textos.append(seg["texto"].strip())
+
+    texto = " ".join(t for t in bloco_textos if t)
+    if len(texto.split()) >= 5:
+        blocos.append({
+            "inicio_seg": bloco_inicio,
+            "fim_seg": bloco_fim,
+            "texto": texto,
+        })
+
+    resultado = []
+    for bloco in blocos:
+        duracao = bloco["fim_seg"] - bloco["inicio_seg"]
+        if duracao > max_dur:
+            sub_blocos = _dividir_bloco(bloco, segmentos, max_dur)
+            resultado.extend(sub_blocos)
+        else:
+            resultado.append(bloco)
+
+    return resultado
+
+
+def _dividir_bloco(bloco, segmentos, max_dur):
+    inicio = bloco["inicio_seg"]
+    fim = bloco["fim_seg"]
+    sub_blocos = []
+
+    segs_no_bloco = [s for s in segmentos
+                     if s["fim"] >= inicio and s["inicio"] <= fim]
+
+    if not segs_no_bloco:
+        return [bloco]
+
+    corte_atual = segs_no_bloco[0]["inicio"]
+    textos_atual = []
+    ultimo_fim = segs_no_bloco[0]["inicio"]
+
+    for seg in segs_no_bloco:
+        if seg["fim"] - corte_atual >= max_dur:
+            gap = seg["inicio"] - ultimo_fim
+            if gap >= 1.5:
+                texto = " ".join(t for t in textos_atual if t)
+                if texto:
+                    sub_blocos.append({
+                        "inicio_seg": corte_atual,
+                        "fim_seg": ultimo_fim,
+                        "texto": texto,
+                    })
+                corte_atual = seg["inicio"]
+                textos_atual = [seg["texto"].strip()]
+            else:
+                textos_atual.append(seg["texto"].strip())
+        else:
+            textos_atual.append(seg["texto"].strip())
+        ultimo_fim = seg["fim"]
+
+    if textos_atual:
+        texto = " ".join(t for t in textos_atual if t)
+        if texto:
+            sub_blocos.append({
+                "inicio_seg": corte_atual,
+                "fim_seg": ultimo_fim,
+                "texto": texto,
+            })
+
+    return sub_blocos
 
 
 def _classificar_por_palavras(texto):
@@ -349,6 +448,40 @@ def _validar_e_corrigir(cortes, segmentos):
         validados.append(c)
 
     return validados
+
+
+def _remover_temas_duplicados(cortes, similaridade_min=0.5):
+    if not cortes:
+        return cortes
+
+    selecionados = []
+    textos_base = []
+
+    for c in cortes:
+        texto_c = c.get("texto", "") or _hook_do_texto(c.get("hook_text", ""))
+        palavras_c = set(re.sub(r'[^\w\s]', '', texto_c.lower()).split())
+        palavras_c = {p for p in palavras_c if len(p) > 3}
+
+        duplicado = False
+        for texto_base in textos_base:
+            palavras_base = set(re.sub(r'[^\w\s]', '', texto_base.lower()).split())
+            palavras_base = {p for p in palavras_base if len(p) > 3}
+
+            intersecao = palavras_c & palavras_base
+            uniao = palavras_c | palavras_base
+            if uniao and len(intersecao) / len(uniao) > similaridade_min:
+                duplicado = True
+                break
+
+        if not duplicado:
+            selecionados.append(c)
+            textos_base.append(texto_c)
+
+    removidos = len(cortes) - len(selecionados)
+    if removidos > 0:
+        print(f"  {removidos} cortes removidos por contexto duplicado")
+
+    return selecionados
 
 
 def _hook_do_texto(texto):
