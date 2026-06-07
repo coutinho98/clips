@@ -9,6 +9,8 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
 OLLAMA_BIN = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ollama", "bin", "ollama")
 
+_ollama_cache = {"result": None, "checked": False}
+
 CATEGORIAS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "momentos.json")
 
 
@@ -46,14 +48,20 @@ Rules:
 
 
 def _usar_ollama():
+    global _ollama_cache
+    if _ollama_cache["checked"]:
+        return _ollama_cache["result"]
     try:
         r = requests.get(f"{OLLAMA_URL}/api/tags", timeout=3)
         if r.status_code != 200:
-            return False
-        modelos = [m.get("name", "").lower() for m in r.json().get("models", [])]
-        return any(OLLAMA_MODEL.lower() in m for m in modelos)
+            _ollama_cache["result"] = False
+        else:
+            modelos = [m.get("name", "").lower() for m in r.json().get("models", [])]
+            _ollama_cache["result"] = any(OLLAMA_MODEL.lower() in m for m in modelos)
     except Exception:
-        return False
+        _ollama_cache["result"] = False
+    _ollama_cache["checked"] = True
+    return _ollama_cache["result"]
 
 
 def _chamar_ollama(system_prompt, user_content):
