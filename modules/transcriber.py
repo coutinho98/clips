@@ -43,8 +43,8 @@ def transcrever_com_faster_whisper(caminho_audio, modelo="medium", idioma="pt"):
         condition_on_previous_text=True,
         compression_ratio_threshold=2.4,
         no_speech_threshold=0.3,
-        beam_size=10,
-        best_of=10,
+        beam_size=5,
+        best_of=5,
     )
 
     segmentos = []
@@ -97,8 +97,8 @@ def transcrever_com_whisper_local(caminho_audio, modelo="medium", idioma="pt"):
         verbose=False,
         word_timestamps=True,
         initial_prompt=WHISPER_INITIAL_PROMPT,
-        beam_size=10,
-        best_of=10,
+        beam_size=5,
+        best_of=5,
     )
 
     segmentos = []

@@ -16,7 +16,7 @@ PASTA_OUTPUT = os.path.join(os.path.dirname(__file__), "output")
 PASTA_ASSETS = os.path.join(os.path.dirname(__file__), "assets")
 
 WHISPER_METODO = os.getenv("WHISPER_METODO", "local")
-WHISPER_MODELO = os.getenv("WHISPER_MODELO", "medium")
+WHISPER_MODELO = os.getenv("WHISPER_MODELO", "small")
 WHISPER_INITIAL_PROMPT = os.getenv(
     "WHISPER_INITIAL_PROMPT",
     "Live de streaming, Twitch, YouTube. Linguagem informal brasileira com gírias: "
