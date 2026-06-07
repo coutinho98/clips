@@ -214,6 +214,7 @@ Textos para corrigir:"""
 
 def corrigir_transcricao(transcricao):
     import requests
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
     ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2")
@@ -245,10 +246,12 @@ def corrigir_transcricao(transcricao):
     print(f"  Corrigindo transcrição com {provedor} ({len(segmentos)} segmentos)...")
 
     batch_size = 10
-    corrigidos = 0
-
+    batches = []
     for i in range(0, len(segmentos), batch_size):
-        batch = segmentos[i:i + batch_size]
+        batches.append((i, segmentos[i:i + batch_size]))
+
+    def _corrigir_batch(batch_info):
+        i, batch = batch_info
         textos = []
         for j, seg in enumerate(batch):
             texto = seg["texto"].strip()
@@ -256,7 +259,7 @@ def corrigir_transcricao(transcricao):
                 textos.append(f"[{j}] {texto}")
 
         if not textos:
-            continue
+            return 0
 
         bloco = "\n".join(textos)
 
@@ -291,6 +294,7 @@ def corrigir_transcricao(transcricao):
                 )
                 correcao = resposta.choices[0].message.content.strip()
 
+            corrigidos = 0
             linhas = correcao.strip().split("\n")
             for linha in linhas:
                 linha = linha.strip()
@@ -309,10 +313,16 @@ def corrigir_transcricao(transcricao):
                             corrigidos += 1
                 except (ValueError, IndexError):
                     continue
+            return corrigidos
 
-        except Exception as e:
-            print(f"  [!] Erro ao corrigir lote {i//batch_size}: {e}")
-            continue
+        except Exception:
+            return 0
+
+    corrigidos = 0
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(_corrigir_batch, b): b[0] for b in batches}
+        for future in as_completed(futures):
+            corrigidos += future.result()
 
     segmentos = [s for s in segmentos if s["texto"].strip()]
 
