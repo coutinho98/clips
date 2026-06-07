@@ -30,6 +30,8 @@ def processar_live(
     detectar_por="ia",
     bg_music=None,
     bg_music_volume=0.15,
+    zoom_dinamico=False,
+    fade_transition=0.0,
     preview=False,
     upload_ig=False,
     resume=True,
@@ -202,6 +204,9 @@ def processar_live(
         transcricao=transcricao if legendas else None,
         bg_music_path=bg_music,
         bg_music_volume=bg_music_volume,
+        estilo_legenda=estilo_legendas,
+        zoom_dinamico=zoom_dinamico,
+        fade_transition=fade_transition,
     )
 
     if resume:
@@ -368,6 +373,10 @@ if __name__ == "__main__":
     parser.add_argument("--bg-music", type=str, help="Caminho para música de fundo")
     parser.add_argument("--bg-music-volume", type=float, default=0.15,
                         help="Volume da música de fundo (0.0 a 1.0, default: 0.15)")
+    parser.add_argument("--zoom-dinamico", action="store_true",
+                        help="Ativar zoom dinamico seguindo o rosto")
+    parser.add_argument("--fade", type=float, default=0.0,
+                        help="Duracao do fade in/out em segundos (ex: 0.3)")
     parser.add_argument("--preview", action="store_true",
                         help="Gerar só thumbnails (sem encodar vídeo)")
     parser.add_argument("--upload", action="store_true", help="Auto-upload Instagram")
@@ -385,6 +394,8 @@ if __name__ == "__main__":
         "detectar_por": args.detectar_por,
         "bg_music": args.bg_music,
         "bg_music_volume": args.bg_music_volume,
+        "zoom_dinamico": args.zoom_dinamico,
+        "fade_transition": args.fade,
         "preview": args.preview,
         "upload_ig": args.upload,
         "resume": not args.no_cache,

@@ -81,14 +81,23 @@ def detectar_faces_crop(caminho_video, inicio_seg, fim_seg, target_w, target_h):
 def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
                   crop_vertical=True, adicionar_legenda=False,
                   segmentos_legenda=None, hook_text=None,
-                  bg_music_path=None, bg_music_volume=0.15):
+                  bg_music_path=None, bg_music_volume=0.15,
+                  estilo_legenda="neon", zoom_dinamico=False,
+                  fade_transition=0.0):
     duracao = fim_seg - inicio_seg
     if duracao > REELS_MAX_DURACAO:
         fim_seg = inicio_seg + REELS_MAX_DURACAO
         print(f"  [REELS] Limitado a {REELS_MAX_DURACAO}s")
 
     print(f"  Extraindo corte: {inicio_seg:.1f}s - {fim_seg:.1f}s ({fim_seg - inicio_seg:.1f}s)")
-    nome_arquivo = titulo.replace(" ", "_").replace("/", "_")[:50]
+
+    if adicionar_legenda and segmentos_legenda and estilo_legenda == "karaoke":
+        from modules.subtitle_generator import gerar_video_com_legendas
+        return gerar_video_com_legendas(
+            caminho_video, segmentos_legenda, inicio_seg, fim_seg,
+            titulo=titulo, estilo=estilo_legenda, crop_vertical=crop_vertical,
+        )
+    nome_arquivo = re.sub(r'[?#%&\\<>|*]', '', titulo.replace(" ", "_").replace("/", "_"))[:50]
     caminho_saida = os.path.join(PASTA_OUTPUT, f"corte_{nome_arquivo}.mp4")
 
     probe = _probe_video(caminho_video)
@@ -144,7 +153,17 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
     else:
         video_filter = legendas_filter.lstrip(",") + hook_filter
 
+    duracao_corte = fim_seg - inicio_seg
+
+    if fade_transition > 0:
+        video_filter += f",fade=t=in:st=0:d={fade_transition}"
+        video_filter += f",fade=t=out:st={duracao_corte - fade_transition}:d={fade_transition}"
+
     af_parts.append("loudnorm=I=-14:TP=-1.5:LRA=11")
+
+    if fade_transition > 0:
+        af_parts.append(f"afade=t=in:st=0:d={fade_transition}")
+        af_parts.append(f"afade=t=out:st={duracao_corte - fade_transition}:d={fade_transition}")
 
     has_bg_music = bg_music_path and os.path.exists(bg_music_path)
 
@@ -257,7 +276,9 @@ def _build_cmd_simple(caminho_video, inicio_seg, fim_seg, video_filter, af_parts
 
 def extrair_multiplos_cortes(caminho_video, cortes, crop_vertical=True,
                               adicionar_legenda=False, transcricao=None,
-                              bg_music_path=None, bg_music_volume=0.15):
+                              bg_music_path=None, bg_music_volume=0.15,
+                              estilo_legenda="neon", zoom_dinamico=False,
+                              fade_transition=0.0):
     resultados = []
 
     for i, corte in enumerate(cortes):
@@ -282,8 +303,22 @@ def extrair_multiplos_cortes(caminho_video, cortes, crop_vertical=True,
                 hook_text=hook,
                 bg_music_path=bg_music_path,
                 bg_music_volume=bg_music_volume,
+                estilo_legenda=estilo_legenda,
+                zoom_dinamico=zoom_dinamico,
+                fade_transition=fade_transition,
             )
             if caminho:
+                import json
+                nome_arquivo = re.sub(r'[?#%&\\<>|*]', '', titulo.replace(" ", "_").replace("/", "_"))[:50]
+                meta_path = os.path.join(PASTA_TEMP, f"{nome_arquivo}_meta.json")
+                with open(meta_path, "w", encoding="utf-8") as mf:
+                    json.dump({
+                        "video_origem": caminho_video,
+                        "inicio": inicio,
+                        "fim": fim,
+                        "titulo": titulo,
+                        "segmentos": segmentos_legenda or [],
+                    }, mf, ensure_ascii=False, indent=2)
                 resultados.append({
                     "titulo": titulo,
                     "caminho": caminho,
@@ -325,7 +360,7 @@ def gerar_preview(caminho_video, cortes, crop_vertical=True):
         titulo = corte.get("titulo", f"preview_{i + 1}")
 
         thumb_time = inicio + (fim - inicio) / 2
-        nome_arquivo = titulo.replace(" ", "_").replace("/", "_")[:50]
+        nome_arquivo = re.sub(r'[?#%&\\<>|*]', '', titulo.replace(" ", "_").replace("/", "_"))[:50]
         thumb_path = os.path.join(PASTA_OUTPUT, f"preview_{nome_arquivo}.jpg")
 
         probe = _probe_video(caminho_video)
