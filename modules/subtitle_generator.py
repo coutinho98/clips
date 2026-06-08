@@ -293,22 +293,55 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
 
 
 def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
+    import io
     from PIL import Image, ImageDraw, ImageFont
 
     inicio = meta.get("inicio", 0)
     fim = meta.get("fim", 10)
+    video_path = meta.get("video_origem", "")
+    fallback = meta.get("fallback", False)
     segmentos = meta.get("segmentos", [])
 
-    tempo_preview = inicio + min(3.0, (fim - inicio) / 2)
+    if fallback and video_path:
+        try:
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", video_path],
+                capture_output=True, text=True, timeout=10,
+            )
+            duracao = float(probe.stdout.strip())
+        except Exception:
+            duracao = 30
+        tempo_preview = duracao * 0.3
+    else:
+        tempo_preview = inicio + min(3.0, (fim - inicio) / 2)
+
+    w_vid, h_vid = RESOLUCAO
+
+    if video_path and os.path.exists(video_path):
+        try:
+            result = subprocess.run([
+                "ffmpeg", "-y", "-ss", str(tempo_preview),
+                "-i", video_path, "-vframes", "1",
+                "-f", "image2pipe", "-vcodec", "png", "-",
+            ], capture_output=True, timeout=15)
+            if len(result.stdout) > 100:
+                frame_img = Image.open(io.BytesIO(result.stdout)).convert("RGBA")
+                frame_img = frame_img.resize((w_vid, h_vid), Image.LANCZOS)
+            else:
+                frame_img = Image.new("RGBA", (w_vid, h_vid), (30, 30, 40, 255))
+        except Exception:
+            frame_img = Image.new("RGBA", (w_vid, h_vid), (30, 30, 40, 255))
+    else:
+        frame_img = Image.new("RGBA", (w_vid, h_vid), (30, 30, 40, 255))
+
     seg_ativo = None
     for seg in segmentos:
         if seg["fim"] >= tempo_preview and seg["inicio"] <= tempo_preview:
             seg_ativo = seg
             break
-
-    w_vid, h_vid = RESOLUCAO
-    img = Image.new("RGB", (w_vid, h_vid), (30, 30, 30))
-    draw = ImageDraw.Draw(img)
+    if not seg_ativo and segmentos:
+        seg_ativo = segmentos[len(segmentos) // 2]
 
     try:
         font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
@@ -319,12 +352,23 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
         texto = _limpar_texto_para_legenda(seg_ativo["texto"])
         if texto:
             texto = _quebrar_texto_legenda(texto)[0]
-            bbox = draw.textbbox((0, 0), texto, font=font)
+            bbox = draw_text_bbox(font, texto)
             tw = bbox[2] - bbox[0]
             th = bbox[3] - bbox[1]
             x = (w_vid - tw) // 2
             y = h_vid - TEXT_MARGIN_BOTTOM - th
-            draw.text((x + 2, y + 2), texto, fill=(0, 0, 0), font=font)
-            draw.text((x, y), texto, fill=(255, 255, 50), font=font)
 
-    return img
+            overlay = Image.new("RGBA", (w_vid, h_vid), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay)
+            draw.text((x + 2, y + 2), texto, fill=(0, 0, 0, 180), font=font)
+            draw.text((x, y), texto, fill=(255, 255, 50), font=font)
+            frame_img = Image.alpha_composite(frame_img, overlay)
+
+    return frame_img.convert("RGB")
+
+
+def draw_text_bbox(font, text):
+    from PIL import Image, ImageDraw
+    dummy = Image.new("RGBA", (1, 1))
+    draw = ImageDraw.Draw(dummy)
+    return draw.textbbox((0, 0), text, font=font)
