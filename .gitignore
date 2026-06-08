@@ -12,3 +12,4 @@ modules/__pycache__/
 *.mov
 *.avi
 *.mkv
+whisper-cpp/models/*.bin

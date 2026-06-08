@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import subprocess
 from config import PASTA_TEMP, OPENAI_API_KEY, WHISPER_INITIAL_PROMPT
 
 
@@ -165,11 +166,17 @@ def transcrever_audio(caminho_audio, metodo="local", modelo="medium", idioma="pt
     if metodo == "api":
         transcricao = transcrever_com_whisper_api(caminho_audio, idioma)
     elif metodo == "local":
+        transcricao = None
         try:
-            from faster_whisper import WhisperModel
-            transcricao = transcrever_com_faster_whisper(caminho_audio, modelo, idioma)
-        except ImportError:
-            transcricao = transcrever_com_whisper_local(caminho_audio, modelo, idioma)
+            transcricao = transcrever_com_whisper_cpp(caminho_audio, modelo, idioma)
+        except Exception:
+            pass
+        if not transcricao:
+            try:
+                from faster_whisper import WhisperModel
+                transcricao = transcrever_com_faster_whisper(caminho_audio, modelo, idioma)
+            except ImportError:
+                transcricao = transcrever_com_whisper_local(caminho_audio, modelo, idioma)
     else:
         print(f"  [ERRO] Método desconhecido: {metodo}. Use 'local' ou 'api'")
         return None
@@ -179,6 +186,95 @@ def transcrever_audio(caminho_audio, metodo="local", modelo="medium", idioma="pt
         transcricao = corrigir_transcricao(transcricao)
 
     return transcricao
+
+
+def transcrever_com_whisper_cpp(caminho_audio, modelo="small", idioma="pt"):
+    import tempfile
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cli_path = os.path.join(base_dir, "whisper-cpp", "bin", "whisper-cli")
+    model_path = os.path.join(base_dir, "whisper-cpp", "models", f"ggml-{modelo}.bin")
+
+    if not os.path.exists(cli_path):
+        return None
+    if not os.path.exists(model_path):
+        print(f"  [!] Modelo whisper.cpp não encontrado: {model_path}")
+        return None
+
+    threads = os.cpu_count() or 4
+
+    tmp_out = tempfile.mktemp(suffix=".json")
+    cmd = [
+        cli_path,
+        "-m", model_path,
+        "-l", idioma,
+        "-t", str(threads),
+        "-bs", "5",
+        "-bo", "5",
+        "-sow",
+        "--max-len", "42",
+        "-ojf",
+        "-of", tmp_out,
+        caminho_audio,
+    ]
+
+    print(f"  Transcrevendo com whisper.cpp ({modelo}, {threads} threads)...")
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+    if proc.returncode != 0:
+        print(f"  [!] whisper.cpp falhou: {proc.stderr[-300:]}")
+        return None
+
+    json_path = tmp_out + ".json"
+    if not os.path.exists(json_path):
+        return None
+
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    os.remove(json_path)
+
+    segmentos = []
+    for seg_data in data.get("transcription", []):
+        texto = seg_data.get("text", "").strip()
+        if not texto:
+            continue
+
+        inicio_ms = seg_data.get("offsets", {}).get("from", 0)
+        fim_ms = seg_data.get("offsets", {}).get("to", 0)
+
+        words_data = []
+        for tok in seg_data.get("tokens", []):
+            tok_text = tok.get("text", "").strip()
+            if not tok_text or tok_text.startswith("["):
+                continue
+            w_from = tok.get("offsets", {}).get("from", 0)
+            w_to = tok.get("offsets", {}).get("to", 0)
+            prob = tok.get("p", 0)
+            if w_to > w_from:
+                words_data.append({
+                    "inicio": w_from / 1000.0,
+                    "fim": w_to / 1000.0,
+                    "texto": tok_text,
+                    "probabilidade": prob,
+                })
+
+        segmentos.append({
+            "inicio": inicio_ms / 1000.0,
+            "fim": fim_ms / 1000.0,
+            "texto": texto,
+            "words": words_data,
+        })
+
+    duracao = segmentos[-1]["fim"] if segmentos else 0
+    texto_completo = " ".join(s["texto"] for s in segmentos)
+
+    print(f"  Transcrição concluída: {len(segmentos)} segmentos, {duracao:.1f}s")
+    return {
+        "texto_completo": texto_completo,
+        "segmentos": segmentos,
+        "duracao": duracao,
+        "idioma": idioma,
+    }
 
 
 PROMPT_CORRECAO = """Você é um corretor especialista em legendas de vídeos em português brasileiro.
