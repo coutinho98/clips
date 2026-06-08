@@ -327,6 +327,17 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
             ], capture_output=True, timeout=15)
             if len(result.stdout) > 100:
                 frame_img = Image.open(io.BytesIO(result.stdout)).convert("RGBA")
+                fw, fh = frame_img.size
+                target_ratio = 9 / 16
+                current_ratio = fw / fh
+                if current_ratio > target_ratio:
+                    new_w = int(fh * target_ratio)
+                    x1 = (fw - new_w) // 2
+                    frame_img = frame_img.crop((x1, 0, x1 + new_w, fh))
+                elif current_ratio < target_ratio:
+                    new_h = int(fw / target_ratio)
+                    y1 = (fh - new_h) // 2
+                    frame_img = frame_img.crop((0, y1, fw, y1 + new_h))
                 frame_img = frame_img.resize((w_vid, h_vid), Image.LANCZOS)
             else:
                 frame_img = Image.new("RGBA", (w_vid, h_vid), (30, 30, 40, 255))
