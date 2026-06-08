@@ -109,7 +109,6 @@ def processar_live(
             print("  [ERRO] Falha na transcrição.")
             return
         transc_path = salvar_transcricao(transcricao)
-        gerar_srt(transcricao["segmentos"])
         if resume:
             salvar_cache(job_id, "transcricao", {"caminho": transc_path})
 
