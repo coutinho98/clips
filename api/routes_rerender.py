@@ -133,7 +133,6 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
         from PIL import Image, ImageDraw, ImageFont
         from modules.subtitle_generator import (
             _quebrar_texto_legenda, _limpar_texto_para_legenda,
-            _desenhar_legenda_karaoke, _desenhar_legenda_filme,
             FONT_SIZE, TEXT_MARGIN_BOTTOM,
         )
         from config import RESOLUCAO
@@ -164,13 +163,11 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
                 "-f", "image2pipe", "-vcodec", "png", "-",
             ], capture_output=True, timeout=15)
             if len(result.stdout) < 100:
-                print(f"  [PREVIEW] ffmpeg returned {len(result.stdout)} bytes, stderr: {result.stderr[:200]}")
                 w, h = RESOLUCAO
                 frame_img = Image.new("RGBA", (w, h), (30, 30, 40, 255))
             else:
                 frame_img = Image.open(io.BytesIO(result.stdout)).convert("RGBA")
-        except Exception as e:
-            print(f"  [PREVIEW] ffmpeg error: {e}")
+        except Exception:
             w, h = RESOLUCAO
             frame_img = Image.new("RGBA", (w, h), (30, 30, 40, 255))
 
@@ -180,29 +177,23 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
 
         if fallback:
             texto_preview = None
-            seg_preview = None
             tempo_abs = tempo_preview
             for seg in segmentos:
                 if seg["fim"] >= tempo_abs and seg["inicio"] <= tempo_abs:
                     texto_preview = seg.get("texto", "").strip()
-                    seg_preview = seg
                     break
             if not texto_preview and segmentos:
                 mid = len(segmentos) // 2
                 texto_preview = segmentos[mid].get("texto", "").strip()
-                seg_preview = segmentos[mid]
         else:
             texto_preview = None
-            seg_preview = None
             for seg in segmentos:
                 if seg["fim"] >= tempo_preview and seg["inicio"] <= tempo_preview:
                     texto_preview = seg.get("texto", "").strip()
-                    seg_preview = seg
                     break
             if not texto_preview and segmentos:
                 mid = len(segmentos) // 2
                 texto_preview = segmentos[mid].get("texto", "").strip()
-                seg_preview = segmentos[mid]
 
         if not texto_preview:
             return frame_img.convert("RGB")
@@ -211,7 +202,7 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
         if not texto_limpo:
             return frame_img.convert("RGB")
 
-        linhas = _quebrar_texto_legenda(texto_limpo)
+        texto = _quebrar_texto_legenda(texto_limpo)
         w, h = frame_img.size
 
         try:
@@ -222,20 +213,16 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
         except Exception:
             font = ImageFont.load_default()
 
+        bbox = font.getbbox(texto)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        x = (w - tw) // 2
+        y = h - TEXT_MARGIN_BOTTOM - th
+
         overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
-
-        if estilo == "karaoke":
-            words = seg_preview.get("words", []) if seg_preview else []
-            if words:
-                mid_idx = len(words) // 2
-                tempo_simulado = words[mid_idx].get("inicio", words[mid_idx].get("start", 0))
-            else:
-                tempo_simulado = 0
-            _desenhar_legenda_karaoke(draw, linhas, font, w, h, tempo_simulado, words)
-        else:
-            texto_formatado = "\n".join(linhas)
-            _desenhar_legenda_filme(draw, texto_formatado, font, w, h, estilo)
+        draw.text((x + 2, y + 2), texto, fill=(0, 0, 0, 180), font=font)
+        draw.text((x, y), texto, fill=(255, 255, 50), font=font)
 
         frame_img = Image.alpha_composite(frame_img, overlay)
         return frame_img.convert("RGB")
@@ -340,6 +327,7 @@ def _rerender_thread(cut_id, render_config, meta):
                 titulo=f"{titulo}_v2",
                 estilo=estilo,
                 crop_vertical=render_config.get("crop_vertical", True),
+                fade_transition=render_config.get("fade_transition", 0.3),
             )
 
             if caminho_saida and os.path.exists(caminho_saida):
