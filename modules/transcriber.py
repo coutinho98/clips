@@ -160,7 +160,8 @@ def transcrever_com_whisper_api(caminho_audio, idioma="pt"):
     }
 
 
-def transcrever_audio(caminho_audio, metodo="local", modelo="medium", idioma="pt"):
+def transcrever_audio(caminho_audio, metodo="local", modelo="medium", idioma="pt",
+                      corrigir_com_ia=False):
     print(f"\n  [Transcrição] Método: {metodo}")
 
     if metodo == "api":
@@ -183,7 +184,8 @@ def transcrever_audio(caminho_audio, metodo="local", modelo="medium", idioma="pt
 
     if transcricao:
         transcricao = filtrar_e_limpar_segmentos(transcricao)
-        transcricao = corrigir_transcricao(transcricao)
+        if corrigir_com_ia:
+            transcricao = corrigir_transcricao(transcricao)
 
     return transcricao
 

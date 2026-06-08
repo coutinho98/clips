@@ -1,10 +1,7 @@
 import os
 import re
 import subprocess
-import shutil
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
-from moviepy import VideoFileClip, ImageSequenceClip
+from pathlib import Path
 from config import RESOLUCAO, PASTA_TEMP, PASTA_OUTPUT
 
 SAFE_ZONE_TOP_PCT = 0.15
@@ -12,7 +9,6 @@ REELS_MAX_DURACAO = 90
 FONT_SIZE = 52
 MAX_CHARS_PER_LINE = 35
 TEXT_MARGIN_BOTTOM = 180
-
 FONT_PATH = "/usr/share/fonts/opentype/fira/FiraSans-SemiBold.otf"
 
 
@@ -53,184 +49,155 @@ def _quebrar_texto_legenda(texto, max_chars=MAX_CHARS_PER_LINE):
     return [linha]
 
 
-def gerar_legendas_estilizadas(segmentos, inicio_global, fim_global,
-                                estilo="neon", fps=24):
-    frames_dir = os.path.join(PASTA_TEMP, "legendas_frames")
-    if os.path.exists(frames_dir):
-        shutil.rmtree(frames_dir)
-    os.makedirs(frames_dir, exist_ok=True)
+def _escape_ass(text):
+    return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\N")
 
-    duracao = fim_global - inicio_global
-    n_frames = int(duracao * fps)
 
-    w_vid, h_vid = RESOLUCAO
+def _format_ass_time(seconds):
+    if seconds < 0:
+        seconds = 0
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    cs = int((seconds % 1) * 100)
+    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
-    try:
-        font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
-        font_hook = ImageFont.truetype(FONT_PATH, 22)
-    except Exception:
-        font = ImageFont.load_default()
-        font_hook = font
 
-    segmentos_filtrados = []
+def _build_ass_header(video_w, video_h):
+    margin_v = video_h - TEXT_MARGIN_BOTTOM
+    return f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {video_w}
+PlayResY: {video_h}
+Timer: 100.0000
+WrapStyle: 2
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Base,FiraSans-SemiBold,{FONT_SIZE},&H00B4B4B4,&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Karaoke,FiraSans-SemiBold,{FONT_SIZE},&H0000FFFF,&H00000000,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Neon,FiraSans-SemiBold,{FONT_SIZE},&H00FFFFFF,&H00000000,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Box,FiraSans-SemiBold,{FONT_SIZE},&H00FFFFFF,&H00000000,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,3,2,1,2,10,10,{margin_v},1
+Style: Sombra,FiraSans-SemiBold,{FONT_SIZE},&H00FFFFFF,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,{margin_v},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+
+def _get_word_timestamps(seg, inicio_global, t_start, t_end):
+    words = seg.get("words", [])
+    if not words:
+        return []
+
+    words_rel = []
+    for wd in words:
+        w_start = wd.get("inicio", wd.get("start", 0)) - inicio_global
+        w_end = wd.get("fim", wd.get("end", 0)) - inicio_global
+        w_text = wd.get("texto", wd.get("word", "")).strip()
+        if w_text and w_end > t_start and w_start < t_end:
+            words_rel.append((max(w_start, t_start), min(w_end, t_end), w_text))
+
+    return words_rel
+
+
+def _gerar_ass_karaoke(segmentos, inicio_global, fim_global, video_w, video_h):
+    ass = _build_ass_header(video_w, video_h)
+
     for seg in segmentos:
-        if seg["fim"] >= inicio_global and seg["inicio"] <= fim_global:
-            texto = seg["texto"].strip()
-            if texto:
-                texto = _limpar_texto_para_legenda(texto)
-            if texto:
-                words = seg.get("words", [])
-                words_ajustadas = []
-                for wd in words:
-                    words_ajustadas.append({
-                        "inicio": wd.get("inicio", wd.get("start", 0)) - inicio_global,
-                        "fim": wd.get("fim", wd.get("end", 0)) - inicio_global,
-                        "texto": wd.get("texto", wd.get("word", "")).strip(),
-                    })
-                segmentos_filtrados.append({
-                    "inicio": seg["inicio"] - inicio_global,
-                    "fim": seg["fim"] - inicio_global,
-                    "texto": texto,
-                    "words": words_ajustadas,
-                })
+        if seg["fim"] < inicio_global or seg["inicio"] > fim_global:
+            continue
 
-    for f_idx in range(n_frames):
-        tempo_atual = f_idx / fps
+        texto = seg["texto"].strip()
+        if not texto:
+            continue
+        texto = _limpar_texto_para_legenda(texto)
+        if not texto:
+            continue
 
-        img = Image.new("RGBA", (w_vid, h_vid), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
+        texto = _quebrar_texto_legenda(texto)[0]
 
-        safe_top_y = int(h_vid * 0.15) + 10
+        t_start = max(seg["inicio"], inicio_global) - inicio_global
+        t_end = min(seg["fim"], fim_global) - inicio_global
 
-        for seg in segmentos_filtrados:
-            if seg["inicio"] <= tempo_atual <= seg["fim"]:
-                texto = seg["texto"]
-                linhas = _quebrar_texto_legenda(texto, max_chars=MAX_CHARS_PER_LINE)
-                texto_formatado = "\n".join(linhas)
+        escaped = _escape_ass(texto)
+        ass += f"Dialogue: 0,{_format_ass_time(t_start)},{_format_ass_time(t_end)},Base,,0,0,0,,{escaped}\n"
 
-                if estilo == "karaoke":
-                    _desenhar_legenda_karaoke(draw, linhas, font, w_vid, h_vid, tempo_atual, seg.get("words", []))
-                else:
-                    _desenhar_legenda_filme(draw, texto_formatado, font, w_vid, h_vid, estilo)
-                break
+        words = _get_word_timestamps(seg, inicio_global, t_start, t_end)
 
-        if tempo_atual < 3.5 and segmentos_filtrados:
-            _desenhar_hook_barra(draw, font_hook, w_vid, safe_top_y)
+        if not words:
+            palavras = texto.split()
+            dur_total = t_end - t_start
+            dur_each = dur_total / max(len(palavras), 1)
+            words = []
+            for idx, p in enumerate(palavras):
+                ws = t_start + idx * dur_each
+                we = ws + dur_each
+                words.append((ws, we, p))
 
-        img.save(f"{frames_dir}/frame_{f_idx:05d}.png")
+        parts = []
+        for i, (ws, we, wt) in enumerate(words):
+            dur_cs = max(int((we - ws) * 100), 1)
+            esc = _escape_ass(wt)
+            if i < len(words) - 1:
+                parts.append(f"{{\\kf{dur_cs}}}{esc} ")
+            else:
+                parts.append(f"{{\\kf{dur_cs}}}{esc}")
 
-    return frames_dir
+        karaoke = "".join(parts)
+        ass += f"Dialogue: 1,{_format_ass_time(t_start)},{_format_ass_time(t_end)},Karaoke,,0,0,0,,{karaoke}\n"
+
+    return ass
 
 
-def _desenhar_legenda_karaoke(draw, linhas, font, largura, altura, tempo_atual, words_com_ts):
-    palavras_texto = []
-    for linha in linhas:
-        for p in linha.split():
-            palavras_texto.append(p)
+def _gerar_ass_simples(segmentos, inicio_global, fim_global, video_w, video_h, estilo):
+    ass = _build_ass_header(video_w, video_h)
+    style_map = {"neon": "Neon", "box": "Box", "sombra": "Sombra"}
+    style_name = style_map.get(estilo, "Sombra")
 
-    total_palavras = len(palavras_texto)
-    if total_palavras == 0:
-        return
+    for seg in segmentos:
+        if seg["fim"] < inicio_global or seg["inicio"] > fim_global:
+            continue
+        texto = seg["texto"].strip()
+        if not texto:
+            continue
+        texto = _limpar_texto_para_legenda(texto)
+        if not texto:
+            continue
+        texto = _quebrar_texto_legenda(texto)[0]
 
-    if words_com_ts and len(words_com_ts) >= total_palavras * 0.5:
-        palavras_acesas = 0
-        for w in words_com_ts:
-            w_inicio = w.get("inicio", 0)
-            if tempo_atual >= w_inicio:
-                palavras_acesas += 1
-    else:
-        primeira = palavras_texto[0].lower().strip(".,;:!?")
-        ultima = palavras_texto[-1].lower().strip(".,;:!?")
-        t_inicio = None
-        t_fim = None
-        for w in words_com_ts:
-            w_txt = w.get("texto", "").lower().strip(".,;:!?")
-            if t_inicio is None and (w_txt == primeira or primeira in w_txt):
-                t_inicio = w.get("inicio", 0)
-            if ultima in w_txt or w_txt == ultima:
-                t_fim = w.get("fim", 0)
+        t_start = max(seg["inicio"], inicio_global) - inicio_global
+        t_end = min(seg["fim"], fim_global) - inicio_global
 
-        if t_inicio is not None and t_fim is not None and t_fim > t_inicio:
-            progresso = (tempo_atual - t_inicio) / (t_fim - t_inicio)
-        else:
-            return
+        escaped = _escape_ass(texto)
+        ass += f"Dialogue: 0,{_format_ass_time(t_start)},{_format_ass_time(t_end)},{style_name},,0,0,0,,{escaped}\n"
 
-        palavras_acesas = int(progresso * total_palavras)
-        if progresso > 0:
-            palavras_acesas = min(palavras_acesas + 1, total_palavras)
-
-    texto_formatado = "\n".join(linhas)
-    bbox = draw.multiline_textbbox((0, 0), texto_formatado, font=font)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-    x_base = (largura - tw) // 2
-    y_base = altura - TEXT_MARGIN_BOTTOM - th
-
-    draw.multiline_text((x_base + 2, y_base + 2), texto_formatado, fill=(0, 0, 0, 180), font=font)
-    draw.multiline_text((x_base, y_base), texto_formatado, fill=(180, 180, 180), font=font)
-
-    cor_highlight = (255, 255, 50)
-    idx_global = 0
-    y_cursor = y_base
-
-    for linha_idx, linha in enumerate(linhas):
-        palavras_linha = linha.split()
-        linha_largura = draw.textlength(linha, font=font)
-        x_linha = (largura - linha_largura) // 2
-
-        x_cursor = x_linha
-        for palavra in palavras_linha:
-            espaco = draw.textlength(" ", font=font)
-            if idx_global < palavras_acesas:
-                draw.text((x_cursor + 1, y_cursor + 1), palavra, fill=(0, 0, 0, 120), font=font)
-                draw.text((x_cursor, y_cursor), palavra, fill=cor_highlight, font=font)
-            x_cursor += draw.textlength(palavra, font=font) + espaco
-            idx_global += 1
-
-        if linha_idx < len(linhas) - 1:
-            y_cursor += draw.textbbox((0, 0), linha, font=font)[3] - draw.textbbox((0, 0), linha, font=font)[1]
-            y_cursor += draw.textbbox((0, 0), "\n", font=font)[3] - draw.textbbox((0, 0), "\n", font=font)[1]
+    return ass
 
 
-def _desenhar_legenda_filme(draw, texto, font, largura, altura, estilo):
-    bbox = draw.multiline_textbbox((0, 0), texto, font=font)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-    x = (largura - tw) // 2
-    y = altura - TEXT_MARGIN_BOTTOM - th
-
-    if estilo == "neon":
-        pad_x, pad_y = 12, 6
-        draw.rounded_rectangle(
-            [(x - pad_x, y - pad_y), (x + tw + pad_x, y + th + pad_y)],
-            radius=4,
-            fill=(0, 0, 0, 160),
+def _probe_video(caminho_video):
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "error",
+             "-show_entries", "stream=width,height,codec_type,duration",
+             "-show_entries", "format=duration",
+             "-of", "json", caminho_video],
+            capture_output=True, text=True, timeout=10,
         )
-        draw.multiline_text((x + 1, y + 1), texto, fill=(0, 0, 0, 200), font=font)
-        draw.multiline_text((x, y), texto, fill="white", font=font)
-    elif estilo == "box":
-        box_pad = 14
-        draw.rounded_rectangle(
-            [(x - box_pad, y - box_pad),
-             (x + tw + box_pad, y + th + box_pad)],
-            radius=8,
-            fill=(0, 0, 0, 240),
-        )
-        draw.multiline_text((x, y), texto, fill="white", font=font)
-    elif estilo == "sombra":
-        draw.multiline_text((x + 2, y + 2), texto, fill=(0, 0, 0, 200), font=font)
-        draw.multiline_text((x, y), texto, fill="white", font=font)
-    else:
-        draw.multiline_text((x, y), texto, fill="white", font=font)
-
-
-def _desenhar_hook_barra(draw, font, largura, y_top):
-    barra_h = 50
-    draw.rounded_rectangle(
-        [(20, y_top), (largura - 20, y_top + barra_h)],
-        radius=25,
-        fill=(0, 0, 0, 160),
-    )
+        import json
+        info = {"width": 1920, "height": 1080, "duration": 999999}
+        data = json.loads(proc.stdout)
+        for stream in data.get("streams", []):
+            if stream.get("codec_type") == "video":
+                info["width"] = int(stream.get("width", 1920))
+                info["height"] = int(stream.get("height", 1080))
+                if "duration" in stream:
+                    info["duration"] = float(stream["duration"])
+        if "format" in data and "duration" in data["format"]:
+            info["duration"] = float(data["format"]["duration"])
+        return info
+    except Exception:
+        return {"width": 1920, "height": 1080, "duration": 999999}
 
 
 def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
@@ -239,127 +206,95 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
     if fim_seg - inicio_seg > REELS_MAX_DURACAO:
         fim_seg = inicio_seg + REELS_MAX_DURACAO
 
-    print(f"  Gerando vídeo com legendas ({estilo}): {inicio_seg:.1f}s - {fim_seg:.1f}s")
-
-    video = VideoFileClip(caminho_video)
-
-    if fim_seg > video.duration:
-        fim_seg = video.duration
-    if inicio_seg < 0:
-        inicio_seg = 0
-
-    clip = video.subclipped(inicio_seg, fim_seg)
-
-    if crop_vertical:
-        clip = _aplicar_crop_vertical(clip)
-
-    fps = 24
-    frames_legendas = gerar_legendas_estilizadas(
-        segmentos, inicio_seg, fim_seg, estilo=estilo, fps=fps
-    )
-
-    w, h = clip.size
-    n_frames = int(clip.duration * fps)
-
-    frames_saida_dir = os.path.join(PASTA_TEMP, "frames_com_legenda")
-    if os.path.exists(frames_saida_dir):
-        shutil.rmtree(frames_saida_dir)
-    os.makedirs(frames_saida_dir, exist_ok=True)
-
-    for f_idx in range(n_frames):
-        t = f_idx / fps
-        frame = clip.get_frame(t)
-        frame_img = Image.fromarray(frame).convert("RGBA")
-
-        legenda_path = os.path.join(frames_legendas, f"frame_{f_idx:05d}.png")
-        if os.path.exists(legenda_path):
-            legenda_img = Image.open(legenda_path).convert("RGBA")
-            legenda_img = legenda_img.resize((w, h), Image.LANCZOS)
-            frame_img = Image.alpha_composite(frame_img, legenda_img)
-
-        frame_img.convert("RGB").save(
-            os.path.join(frames_saida_dir, f"frame_{f_idx:05d}.jpg"),
-            quality=90,
-        )
-
-    video_final = ImageSequenceClip(frames_saida_dir, fps=fps)
-    video_final = video_final.with_audio(clip.audio)
+    print(f"  Gerando legendas ASS ({estilo}): {inicio_seg:.1f}s - {fim_seg:.1f}s")
 
     nome_arquivo = _sanitize_nome(titulo)
+    ass_path = os.path.join(PASTA_TEMP, f"{nome_arquivo}.ass")
     caminho_saida = os.path.join(PASTA_OUTPUT, f"corte_{nome_arquivo}.mp4")
 
-    print(f"  Encodando vídeo final com legendas...")
-    video_final.write_videofile(
+    video_w, video_h = RESOLUCAO
+
+    if estilo == "karaoke":
+        ass_content = _gerar_ass_karaoke(segmentos, inicio_seg, fim_seg, video_w, video_h)
+    else:
+        ass_content = _gerar_ass_simples(segmentos, inicio_seg, fim_seg, video_w, video_h, estilo)
+
+    with open(ass_path, "w", encoding="utf-8") as f:
+        f.write(ass_content)
+
+    vf_parts = []
+
+    if crop_vertical:
+        probe = _probe_video(caminho_video)
+        orig_w = int(probe.get("width", 1920))
+        orig_h = int(probe.get("height", 1080))
+
+        if orig_h > orig_w:
+            vf_parts.append(f"scale={video_w}:{video_h}")
+        else:
+            target_ratio = 9 / 16
+            current_ratio = orig_w / orig_h
+            if current_ratio < target_ratio:
+                new_h = int(orig_w / target_ratio)
+                y_center = orig_h // 2
+                y1 = max(0, y_center - new_h // 2)
+                vf_parts.append(f"crop={orig_w}:{new_h}:0:{y1}")
+            else:
+                new_w = int(orig_h * target_ratio)
+                x_center = orig_w // 2
+                x1 = max(0, x_center - new_w // 2)
+                vf_parts.append(f"crop={new_w}:{orig_h}:{x1}:0")
+            vf_parts.append(f"scale={video_w}:{video_h}")
+
+    escaped_ass = ass_path.replace("'", "'\\''").replace(":", "\\:")
+    vf_parts.append(f"ass='{escaped_ass}'")
+
+    duracao_corte = fim_seg - inicio_seg
+    if fade_transition > 0:
+        vf_parts.append(f"fade=t=in:st=0:d={fade_transition}")
+        vf_parts.append(f"fade=t=out:st={duracao_corte - fade_transition}:d={fade_transition}")
+
+    vf = ",".join(vf_parts)
+
+    af = "loudnorm=I=-14:TP=-1.5:LRA=11"
+    if fade_transition > 0:
+        af += f",afade=t=in:st=0:d={fade_transition}"
+        af += f",afade=t=out:st={duracao_corte - fade_transition}:d={fade_transition}"
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", str(inicio_seg),
+        "-to", str(fim_seg),
+        "-i", caminho_video,
+        "-vf", vf,
+        "-af", af,
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "23",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-movflags", "+faststart",
+        "-threads", "4",
         caminho_saida,
-        fps=fps,
-        codec="libx264",
-        audio_codec="aac",
-        audio_bitrate="192k",
-        preset="fast",
-        threads=4,
-        logger=None,
-    )
+    ]
 
-    clip.close()
-    video.close()
+    print(f"  Encodando vídeo com legendas...")
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if proc.returncode != 0:
+        print(f"  [ERRO] ffmpeg: {proc.stderr[-500:]}")
+        return None
 
-    _mover_moov_faststart(caminho_saida)
+    if not os.path.exists(caminho_saida):
+        return None
 
+    tamanho_mb = os.path.getsize(caminho_saida) / (1024 * 1024)
+    print(f"  Vídeo salvo: {caminho_saida} ({tamanho_mb:.1f} MB)")
     return caminho_saida
 
 
-def _mover_moov_faststart(caminho_video):
-    try:
-        resultado = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=noprint_wrappers=1:nokey=1", caminho_video],
-            capture_output=True, text=True, timeout=10,
-        )
-        if resultado.returncode != 0:
-            return
-    except Exception:
-        return
-
-    tmp_path = caminho_video + ".tmp.mp4"
-    try:
-        subprocess.run([
-            "ffmpeg", "-y", "-i", caminho_video,
-            "-c", "copy", "-movflags", "+faststart",
-            tmp_path,
-        ], capture_output=True, text=True, timeout=120)
-        shutil.move(tmp_path, caminho_video)
-    except Exception:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-
-def _aplicar_crop_vertical(clip):
-    w, h = clip.size
-
-    if h > w:
-        return clip.resized(RESOLUCAO)
-
-    target_ratio = 9 / 16
-    current_ratio = w / h
-
-    if current_ratio < target_ratio:
-        new_h = int(w / target_ratio)
-        y_center = h // 2
-        y1 = max(0, y_center - new_h // 2)
-        y2 = min(h, y1 + new_h)
-        clip = clip.cropped(y1=y1, y2=y2)
-    else:
-        new_w = int(h * target_ratio)
-        x_center = w // 2
-        x1 = max(0, x_center - new_w // 2)
-        x2 = min(w, x1 + new_w)
-        clip = clip.cropped(x1=x1, x2=x2)
-
-    clip = clip.resized(RESOLUCAO)
-    return clip
-
-
 def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
+    from PIL import Image, ImageDraw, ImageFont
+
     inicio = meta.get("inicio", 0)
     fim = meta.get("fim", 10)
     segmentos = meta.get("segmentos", [])
@@ -383,8 +318,7 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
     if seg_ativo:
         texto = _limpar_texto_para_legenda(seg_ativo["texto"])
         if texto:
-            linhas = _quebrar_texto_legenda(texto)
-            texto = linhas[0]
+            texto = _quebrar_texto_legenda(texto)[0]
             bbox = draw.textbbox((0, 0), texto, font=font)
             tw = bbox[2] - bbox[0]
             th = bbox[3] - bbox[1]
