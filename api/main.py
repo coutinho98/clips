@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import asyncio
-import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -23,7 +23,14 @@ from api.state import AppState
 BASE_DIR = Path(__file__).parent.parent
 WEB_DIR = BASE_DIR / "web" / "dist"
 
-app = FastAPI(title="Dark Channel Bot", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app):
+    asyncio.create_task(ws_manager.broadcast_loop())
+    yield
+
+
+app = FastAPI(title="Dark Channel Bot", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,11 +59,6 @@ async def ws_endpoint(websocket: WebSocket):
                 await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
-
-
-@app.on_event("startup")
-async def startup():
-    asyncio.create_task(ws_manager.broadcast_loop())
 
 
 if WEB_DIR.exists():
