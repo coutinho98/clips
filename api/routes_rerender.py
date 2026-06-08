@@ -37,7 +37,7 @@ async def preview_subtitle(cut_id: str, body: dict):
     sub_mod.FONT_SIZE = font_size
     sub_mod.TEXT_MARGIN_BOTTOM = margin_bottom
 
-    img = _generate_preview_frame(cut_id, meta, estilo, crop)
+    img = sub_mod._generate_preview_frame(cut_id, meta, estilo, crop)
     if img is None:
         return {"error": "failed to generate preview"}
 
@@ -125,111 +125,6 @@ def _get_cut_data(cut_id):
         "segmentos": transc.get("segmentos", []),
         "fallback": True,
     }
-
-
-def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
-    try:
-        import numpy as np
-        from PIL import Image, ImageDraw, ImageFont
-        from modules.subtitle_generator import (
-            _quebrar_texto_legenda, _limpar_texto_para_legenda,
-            FONT_SIZE, TEXT_MARGIN_BOTTOM,
-        )
-        from config import RESOLUCAO
-
-        video_path = meta["video_origem"]
-        inicio = meta["inicio"]
-        fim = meta["fim"]
-        fallback = meta.get("fallback", False)
-
-        if fallback:
-            try:
-                probe = subprocess.run(
-                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                     "-of", "default=noprint_wrappers=1:nokey=1", video_path],
-                    capture_output=True, text=True, timeout=10,
-                )
-                duracao = float(probe.stdout.strip())
-            except Exception:
-                duracao = 30
-            tempo_preview = duracao * 0.3
-        else:
-            tempo_preview = inicio + (fim - inicio) * 0.3
-
-        try:
-            result = subprocess.run([
-                "ffmpeg", "-y", "-ss", str(tempo_preview),
-                "-i", video_path, "-vframes", "1",
-                "-f", "image2pipe", "-vcodec", "png", "-",
-            ], capture_output=True, timeout=15)
-            if len(result.stdout) < 100:
-                w, h = RESOLUCAO
-                frame_img = Image.new("RGBA", (w, h), (30, 30, 40, 255))
-            else:
-                frame_img = Image.open(io.BytesIO(result.stdout)).convert("RGBA")
-        except Exception:
-            w, h = RESOLUCAO
-            frame_img = Image.new("RGBA", (w, h), (30, 30, 40, 255))
-
-        frame_img = frame_img.resize(RESOLUCAO, Image.LANCZOS)
-
-        segmentos = meta.get("segmentos", [])
-
-        if fallback:
-            texto_preview = None
-            tempo_abs = tempo_preview
-            for seg in segmentos:
-                if seg["fim"] >= tempo_abs and seg["inicio"] <= tempo_abs:
-                    texto_preview = seg.get("texto", "").strip()
-                    break
-            if not texto_preview and segmentos:
-                mid = len(segmentos) // 2
-                texto_preview = segmentos[mid].get("texto", "").strip()
-        else:
-            texto_preview = None
-            for seg in segmentos:
-                if seg["fim"] >= tempo_preview and seg["inicio"] <= tempo_preview:
-                    texto_preview = seg.get("texto", "").strip()
-                    break
-            if not texto_preview and segmentos:
-                mid = len(segmentos) // 2
-                texto_preview = segmentos[mid].get("texto", "").strip()
-
-        if not texto_preview:
-            return frame_img.convert("RGB")
-
-        texto_limpo = _limpar_texto_para_legenda(texto_preview)
-        if not texto_limpo:
-            return frame_img.convert("RGB")
-
-        texto = _quebrar_texto_legenda(texto_limpo)
-        w, h = frame_img.size
-
-        try:
-            font = ImageFont.truetype(
-                "/usr/share/fonts/opentype/fira/FiraSans-SemiBold.otf",
-                FONT_SIZE
-            )
-        except Exception:
-            font = ImageFont.load_default()
-
-        bbox = font.getbbox(texto)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        x = (w - tw) // 2
-        y = h - TEXT_MARGIN_BOTTOM - th
-
-        overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
-        draw.text((x + 2, y + 2), texto, fill=(0, 0, 0, 180), font=font)
-        draw.text((x, y), texto, fill=(255, 255, 50), font=font)
-
-        frame_img = Image.alpha_composite(frame_img, overlay)
-        return frame_img.convert("RGB")
-
-    except Exception as e:
-        print(f"  [PREVIEW ERROR] {e}")
-        return None
 
 
 @router.get("/cut/{cut_id}")
