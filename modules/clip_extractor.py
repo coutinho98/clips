@@ -83,7 +83,7 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
                   segmentos_legenda=None, hook_text=None,
                   bg_music_path=None, bg_music_volume=0.15,
                   estilo_legenda="neon", zoom_dinamico=False,
-                  fade_transition=0.0):
+                  fade_transition=0.0, probe_cache=None):
     duracao = fim_seg - inicio_seg
     if duracao > REELS_MAX_DURACAO:
         fim_seg = inicio_seg + REELS_MAX_DURACAO
@@ -91,16 +91,22 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
 
     print(f"  Extraindo corte: {inicio_seg:.1f}s - {fim_seg:.1f}s ({fim_seg - inicio_seg:.1f}s)")
 
-    if adicionar_legenda and segmentos_legenda and estilo_legenda == "karaoke":
+    if adicionar_legenda and segmentos_legenda:
         from modules.subtitle_generator import gerar_video_com_legendas
         return gerar_video_com_legendas(
             caminho_video, segmentos_legenda, inicio_seg, fim_seg,
             titulo=titulo, estilo=estilo_legenda, crop_vertical=crop_vertical,
+            fade_transition=fade_transition,
         )
     nome_arquivo = re.sub(r'[?#%&\\<>|*]', '', titulo.replace(" ", "_").replace("/", "_"))[:50]
     caminho_saida = os.path.join(PASTA_OUTPUT, f"corte_{nome_arquivo}.mp4")
 
-    probe = _probe_video(caminho_video)
+    if probe_cache and caminho_video in probe_cache:
+        probe = probe_cache[caminho_video]
+    else:
+        probe = _probe_video(caminho_video)
+        if probe_cache is not None:
+            probe_cache[caminho_video] = probe
     video_duration = float(probe.get("duration", 999999))
     if fim_seg > video_duration:
         fim_seg = video_duration
@@ -280,6 +286,12 @@ def extrair_multiplos_cortes(caminho_video, cortes, crop_vertical=True,
                               estilo_legenda="neon", zoom_dinamico=False,
                               fade_transition=0.0):
     resultados = []
+    _probe_cache = {}
+
+    def _get_probe(path):
+        if path not in _probe_cache:
+            _probe_cache[path] = _probe_video(path)
+        return _probe_cache[path]
 
     for i, corte in enumerate(cortes):
         inicio = corte.get("inicio_seg", 0)
@@ -306,6 +318,7 @@ def extrair_multiplos_cortes(caminho_video, cortes, crop_vertical=True,
                 estilo_legenda=estilo_legenda,
                 zoom_dinamico=zoom_dinamico,
                 fade_transition=fade_transition,
+                probe_cache=_probe_cache,
             )
             if caminho:
                 import json
