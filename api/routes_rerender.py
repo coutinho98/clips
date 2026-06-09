@@ -36,6 +36,8 @@ async def preview_subtitle(cut_id: str, body: dict):
 
     sub_mod.FONT_SIZE = font_size
     sub_mod.TEXT_MARGIN_BOTTOM = margin_bottom
+    sub_mod.BASE_COLOR = body.get("base_color", "#B4B4B4")
+    sub_mod.HIGHLIGHT_COLOR = body.get("highlight_color", "#FFFF32")
 
     img = sub_mod._generate_preview_frame(cut_id, meta, estilo, crop)
     if img is None:
@@ -171,6 +173,8 @@ def _rerender_thread(cut_id, render_config, meta):
         import modules.subtitle_generator as sub_mod
         sub_mod.FONT_SIZE = render_config.get("font_size", 52)
         sub_mod.TEXT_MARGIN_BOTTOM = render_config.get("text_margin_bottom", 180)
+        sub_mod.BASE_COLOR = render_config.get("base_color", "#B4B4B4")
+        sub_mod.HIGHLIGHT_COLOR = render_config.get("highlight_color", "#FFFF32")
 
         video_origem = meta["video_origem"]
         inicio = meta["inicio"]

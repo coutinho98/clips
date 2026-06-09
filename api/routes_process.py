@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import subprocess
 import threading
 import asyncio
 from pathlib import Path
@@ -80,6 +81,8 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
         import modules.subtitle_generator as sub_mod
         sub_mod.FONT_SIZE = config.get("font_size", 52)
         sub_mod.TEXT_MARGIN_BOTTOM = config.get("text_margin_bottom", 180)
+        sub_mod.BASE_COLOR = config.get("base_color", "#B4B4B4")
+        sub_mod.HIGHLIGHT_COLOR = config.get("highlight_color", "#FFFF32")
 
         from modules.cache import gerar_job_id, salvar_cache, tem_etapa, obter_etapa
         from modules.live_downloader import baixar_live
@@ -91,33 +94,71 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
         hook.emit("download", "Baixando vídeo...")
         job_id = gerar_job_id(url, video_path)
 
-        if url and not video_path:
-            caminho_video = baixar_live(url)
-            if not caminho_video:
-                _emit("Erro ao baixar", 0, error="Falha no download")
-                return
-        else:
-            caminho_video = video_path
+        caminho_video = None
+        if tem_etapa(job_id, "download"):
+            cached = obter_etapa(job_id, "download")
+            if cached and os.path.exists(cached.get("caminho", "")):
+                caminho_video = cached["caminho"]
+                hook.emit("download", f"Reutilizando vídeo em cache...")
+
+        if not caminho_video:
+            if url and not video_path:
+                caminho_video = baixar_live(url)
+                if not caminho_video:
+                    _emit("Erro ao baixar", 0, error="Falha no download")
+                    return
+            else:
+                caminho_video = video_path
+            salvar_cache(job_id, "download", {"caminho": caminho_video, "url": url})
 
         hook.emit("audio", "Extraindo áudio...")
-        caminho_audio = extrair_audio_do_video(caminho_video)
+        caminho_audio = None
+        if tem_etapa(job_id, "audio"):
+            cached = obter_etapa(job_id, "audio")
+            if cached and os.path.exists(cached.get("caminho", "")):
+                caminho_audio = cached["caminho"]
+                hook.emit("audio", f"Reutilizando áudio em cache...")
+
         if not caminho_audio:
-            _emit("Erro ao extrair áudio", 0, error="Falha no áudio")
-            return
+            caminho_audio = extrair_audio_do_video(caminho_video)
+            if not caminho_audio:
+                _emit("Erro ao extrair áudio", 0, error="Falha no áudio")
+                return
+            salvar_cache(job_id, "audio", {"caminho": caminho_audio})
 
         hook.emit("transcricao", "Transcrevendo áudio...")
-        transcricao = transcrever_audio(
-            caminho_audio,
-            metodo="local",
-            modelo=config.get("whisper_model", "small"),
-        )
+        modelo = config.get("whisper_model", "small")
+        cache_key_transc = f"transcricao_{modelo}"
+        transcricao = None
+        if tem_etapa(job_id, cache_key_transc):
+            cached_t = obter_etapa(job_id, cache_key_transc)
+            if cached_t and cached_t.get("segmentos"):
+                transcricao = cached_t
+                hook.emit("transcricao", f"Reutilizando transcrição em cache ({modelo})...")
+
         if not transcricao:
-            _emit("Erro na transcrição", 0, error="Transcrição falhou")
-            return
+            transcricao = transcrever_audio(
+                caminho_audio,
+                metodo="local",
+                modelo=modelo,
+            )
+            if not transcricao:
+                _emit("Erro na transcrição", 0, error="Transcrição falhou")
+                return
+            salvar_cache(job_id, cache_key_transc, transcricao)
         salvar_transcricao(transcricao)
 
         hook.emit("picos_audio", "Analisando áudio...")
-        momentos_audio = detectar_momentos_interessantes(caminho_audio)
+        cache_key_picos = "picos_audio"
+        momentos_audio = None
+        if tem_etapa(job_id, cache_key_picos):
+            cached_p = obter_etapa(job_id, cache_key_picos)
+            if cached_p:
+                momentos_audio = cached_p
+                hook.emit("picos_audio", "Reutilizando análise de áudio em cache...")
+        if not momentos_audio:
+            momentos_audio = detectar_momentos_interessantes(caminho_audio)
+            salvar_cache(job_id, cache_key_picos, momentos_audio)
 
         hook.emit("highlights", "Detectando melhores momentos...")
         max_cuts = config.get("max_cuts", 5)
@@ -150,6 +191,14 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
         if not cortes:
             _emit("Nenhum corte encontrado", 0, error="Sem cortes")
             return
+
+        _emit(f"Refinando {len(cortes)} cortes...", 80)
+        from modules.cut_refiner import refinar_cortes
+        cortes = refinar_cortes(cortes, transcricao)
+        print(f"\n  {len(cortes)} cortes refinados:")
+        for c in cortes:
+            d = c.get("fim_seg", 0) - c.get("inicio_seg", 0)
+            print(f"    {c.get('titulo', '?')} ({d:.0f}s) [{c.get('inicio_seg', 0):.0f}s - {c.get('fim_seg', 0):.0f}s]")
 
         _emit(f"Gerando {len(cortes)} cortes...", 85)
         resultados = extrair_multiplos_cortes(
@@ -199,9 +248,23 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                 })
 
         _emit("Pronto!", 100, cuts=cuts_data)
+        try:
+            subprocess.run(
+                ["notify-send", "Dark Channel Bot", f"Processamento concluído! {len(cuts_data)} cortes gerados."],
+                capture_output=True, timeout=5,
+            )
+        except Exception:
+            pass
 
     except Exception as e:
         _emit(f"Erro: {str(e)}", 0, error=str(e))
+        try:
+            subprocess.run(
+                ["notify-send", "Dark Channel Bot", f"Erro: {str(e)[:100]}"],
+                capture_output=True, timeout=5,
+            )
+        except Exception:
+            pass
     finally:
         s.processing = False
 
@@ -252,3 +315,17 @@ async def get_status():
         "progress": s.progress,
         "step": s.current_step,
     }
+
+
+@router.post("/clear-cache")
+async def clear_cache():
+    from modules.cache import CACHE_DIR, limpar_cache
+    import glob
+    removed = 0
+    for f in glob.glob(os.path.join(CACHE_DIR, "*.json")):
+        try:
+            os.remove(f)
+            removed += 1
+        except Exception:
+            pass
+    return {"status": "ok", "removed": removed}
