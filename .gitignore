@@ -13,3 +13,4 @@ modules/__pycache__/
 *.avi
 *.mkv
 whisper-cpp/models/*.bin
+whisper-cpp/bin/libggml-cuda.so.0
