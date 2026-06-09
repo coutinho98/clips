@@ -3,6 +3,7 @@ import ConfigPanel from './components/ConfigPanel'
 import ProcessingPanel from './components/ProcessingPanel'
 import CutsPanel from './components/CutsPanel'
 import VideoEditor from './components/VideoEditor'
+import { Zap, Loader2, Scissors, Tv } from 'lucide-react'
 import './App.css'
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
   const [cuts, setCuts] = useState([])
   const [error, setError] = useState('')
   const [editingCut, setEditingCut] = useState(null)
+  const [wsConnected, setWsConnected] = useState(false)
   const wsRef = useRef(null)
 
   useEffect(() => {
@@ -40,6 +42,7 @@ function App() {
   function connectWS() {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const ws = new WebSocket(`${protocol}://${window.location.host}/ws`)
+    ws.onopen = () => setWsConnected(true)
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data)
       if (data.type === 'progress') {
@@ -64,7 +67,10 @@ function App() {
         }
       }
     }
-    ws.onclose = () => setTimeout(connectWS, 2000)
+    ws.onclose = () => {
+      setWsConnected(false)
+      setTimeout(connectWS, 2000)
+    }
     wsRef.current = ws
   }
 
@@ -159,13 +165,33 @@ function App() {
 
   return (
     <div className="app">
-      <header className="header">
-        <h1>Dark Channel Bot</h1>
-        <span className="subtitle">Cortes automaticos para Reels</span>
-      </header>
+      <div className="topbar">
+        <div className="topbar-brand">
+          <div className="topbar-logo">
+            <Zap size={18} />
+          </div>
+          <div className="topbar-text">
+            <h1>Dark Channel Bot</h1>
+            <span>Cortes automaticos para Reels</span>
+          </div>
+        </div>
 
-      <div className="main-grid">
-        <div className="left-col">
+        <div className="topbar-right">
+          {processing && (
+            <div className="topbar-processing">
+              <Loader2 size={13} className="spin" />
+              Processando...
+            </div>
+          )}
+          <div className="topbar-connection">
+            <div className={`connection-dot ${wsConnected ? '' : 'off'}`} />
+            <span>{wsConnected ? 'Conectado' : 'Desconectado'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="workspace">
+        <div className="sidebar">
           <ConfigPanel
             config={config}
             defaults={defaults}
@@ -174,7 +200,7 @@ function App() {
           />
         </div>
 
-        <div className="right-col">
+        <div className="main-content">
           <ProcessingPanel
             onStart={startProcess}
             onUpload={uploadVideo}
@@ -196,6 +222,24 @@ function App() {
             <CutsPanel cuts={cuts} onEdit={handleEditCut} />
           )}
         </div>
+      </div>
+
+      <div className="statusbar">
+        <div className="statusbar-item">
+          <div className={`connection-dot ${wsConnected ? '' : 'off'}`} />
+          <span>{wsConnected ? 'WebSocket conectado' : 'Reconectando...'}</span>
+        </div>
+        <div className="statusbar-divider" />
+        <div className="statusbar-item">
+          <Scissors size={11} />
+          <span>{cuts.length} cortes</span>
+        </div>
+        <div className="statusbar-divider" />
+        <div className="statusbar-item">
+          <Tv size={11} />
+          <span>{processing ? step || 'Processando...' : 'Pronto'}</span>
+        </div>
+        <span className="statusbar-right">Dark Channel Bot v1.0</span>
       </div>
     </div>
   )
