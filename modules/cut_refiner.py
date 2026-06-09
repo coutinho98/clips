@@ -25,9 +25,6 @@ def refinar_cortes(cortes, transcricao, duracao_min=20, duracao_max=60):
             inicio, fim = _expandir_corte(inicio, fim, segmentos, duracao_min)
             rc["inicio_seg"] = inicio
             rc["fim_seg"] = fim
-        elif duracao > duracao_max:
-            fim = inicio + duracao_max
-            inicio, fim = _snap_para_sentenca(inicio, fim, segmentos)
             rc["inicio_seg"] = inicio
             rc["fim_seg"] = fim
 

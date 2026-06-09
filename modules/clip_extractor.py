@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 from config import RESOLUCAO, PASTA_OUTPUT, PASTA_TEMP
 
-REELS_MAX_DURACAO = 60
+REELS_MAX_DURACAO = 999
 
 
 def detectar_faces_crop(caminho_video, inicio_seg, fim_seg, target_w, target_h):
