@@ -5,7 +5,7 @@ from pathlib import Path
 from config import RESOLUCAO, PASTA_TEMP, PASTA_OUTPUT
 
 SAFE_ZONE_TOP_PCT = 0.15
-REELS_MAX_DURACAO = 60
+REELS_MAX_DURACAO = 999
 FONT_SIZE = 52
 MAX_CHARS_PER_LINE = 35
 TEXT_MARGIN_BOTTOM = 180
@@ -247,7 +247,9 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
     print(f"  Gerando legendas ASS ({estilo}): {inicio_seg:.1f}s - {fim_seg:.1f}s")
 
     nome_arquivo = _sanitize_nome(titulo)
-    ass_path = os.path.join(PASTA_TEMP, f"{nome_arquivo}.ass")
+    import hashlib
+    safe_name = hashlib.md5(titulo.encode()).hexdigest()[:10]
+    ass_path = os.path.join(PASTA_TEMP, f"sub_{safe_name}.ass")
     caminho_saida = os.path.join(PASTA_OUTPUT, f"corte_{nome_arquivo}.mp4")
 
     video_w, video_h = RESOLUCAO
