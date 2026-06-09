@@ -5,11 +5,13 @@ from pathlib import Path
 from config import RESOLUCAO, PASTA_TEMP, PASTA_OUTPUT
 
 SAFE_ZONE_TOP_PCT = 0.15
-REELS_MAX_DURACAO = 90
+REELS_MAX_DURACAO = 60
 FONT_SIZE = 52
 MAX_CHARS_PER_LINE = 35
 TEXT_MARGIN_BOTTOM = 180
 FONT_PATH = "/usr/share/fonts/opentype/fira/FiraSans-SemiBold.otf"
+BASE_COLOR = "#B4B4B4"
+HIGHLIGHT_COLOR = "#FFFF32"
 
 
 def _sanitize_nome(titulo, max_len=50):
@@ -63,8 +65,16 @@ def _format_ass_time(seconds):
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
+def _hex_to_ass(hex_color):
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    return f"&H00{b:02X}{g:02X}{r:02X}"
+
+
 def _build_ass_header(video_w, video_h):
-    margin_v = video_h - TEXT_MARGIN_BOTTOM
+    margin_v = TEXT_MARGIN_BOTTOM
+    base_ass = _hex_to_ass(BASE_COLOR)
+    hl_ass = _hex_to_ass(HIGHLIGHT_COLOR)
     return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {video_w}
@@ -74,11 +84,11 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Base,FiraSans-SemiBold,{FONT_SIZE},&H00B4B4B4,&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
-Style: Karaoke,FiraSans-SemiBold,{FONT_SIZE},&H0000FFFF,&H00000000,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
-Style: Neon,FiraSans-SemiBold,{FONT_SIZE},&H00FFFFFF,&H00000000,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
-Style: Box,FiraSans-SemiBold,{FONT_SIZE},&H00FFFFFF,&H00000000,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,3,2,1,2,10,10,{margin_v},1
-Style: Sombra,FiraSans-SemiBold,{FONT_SIZE},&H00FFFFFF,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,{margin_v},1
+Style: Base,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Karaoke,FiraSans-SemiBold,{FONT_SIZE},{hl_ass},&HFF000000,&HFF000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,2,10,10,{margin_v},1
+Style: Neon,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Box,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,3,2,1,2,10,10,{margin_v},1
+Style: Sombra,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -104,29 +114,36 @@ def _get_word_timestamps(seg, inicio_global, t_start, t_end):
 def _gerar_ass_karaoke(segmentos, inicio_global, fim_global, video_w, video_h):
     ass = _build_ass_header(video_w, video_h)
 
+    filtrados = []
     for seg in segmentos:
         if seg["fim"] < inicio_global or seg["inicio"] > fim_global:
             continue
-
         texto = seg["texto"].strip()
         if not texto:
             continue
         texto = _limpar_texto_para_legenda(texto)
         if not texto:
             continue
-
         texto = _quebrar_texto_legenda(texto)[0]
+        t_start = max(seg["inicio"], inicio_global)
+        t_end = min(seg["fim"], fim_global)
+        filtrados.append({"t_start": t_start, "t_end": t_end, "texto": texto, "words": seg.get("words", []), "seg_orig": seg})
 
-        t_start = max(seg["inicio"], inicio_global) - inicio_global
-        t_end = min(seg["fim"], fim_global) - inicio_global
+    filtrados.sort(key=lambda s: s["t_start"])
 
-        escaped = _escape_ass(texto)
-        ass += f"Dialogue: 0,{_format_ass_time(t_start)},{_format_ass_time(t_end)},Base,,0,0,0,,{escaped}\n"
+    prev_end = inicio_global
+    for item in filtrados:
+        t_start = max(item["t_start"], prev_end)
+        t_end = item["t_end"]
+        if t_start >= t_end:
+            continue
 
-        words = _get_word_timestamps(seg, inicio_global, t_start, t_end)
+        escaped = _escape_ass(item["texto"])
+        ass += f"Dialogue: 0,{_format_ass_time(t_start - inicio_global)},{_format_ass_time(t_end - inicio_global)},Base,,0,0,0,,{escaped}\n"
 
+        words = _get_word_timestamps(item["seg_orig"], inicio_global, t_start, t_end)
         if not words:
-            palavras = texto.split()
+            palavras = item["texto"].split()
             dur_total = t_end - t_start
             dur_each = dur_total / max(len(palavras), 1)
             words = []
@@ -135,17 +152,26 @@ def _gerar_ass_karaoke(segmentos, inicio_global, fim_global, video_w, video_h):
                 we = ws + dur_each
                 words.append((ws, we, p))
 
+        k_start = words[0][0]
+        k_end = words[-1][1]
+
         parts = []
+        karaoke_elapsed = 0
         for i, (ws, we, wt) in enumerate(words):
+            word_start_cs = int((ws - k_start) * 100)
+            gap_cs = word_start_cs - karaoke_elapsed
+            if gap_cs > 0:
+                parts.append(f"{{\\k{gap_cs}}}")
             dur_cs = max(int((we - ws) * 100), 1)
             esc = _escape_ass(wt)
-            if i < len(words) - 1:
-                parts.append(f"{{\\kf{dur_cs}}}{esc} ")
-            else:
-                parts.append(f"{{\\kf{dur_cs}}}{esc}")
+            sep = " " if i < len(words) - 1 else ""
+            parts.append(f"{{\\k{dur_cs}}}{esc}{sep}")
+            karaoke_elapsed = word_start_cs + dur_cs
 
         karaoke = "".join(parts)
-        ass += f"Dialogue: 1,{_format_ass_time(t_start)},{_format_ass_time(t_end)},Karaoke,,0,0,0,,{karaoke}\n"
+        ass += f"Dialogue: 1,{_format_ass_time(k_start - inicio_global)},{_format_ass_time(k_end - inicio_global)},Karaoke,,0,0,0,,{karaoke}\n"
+
+        prev_end = t_end
 
     return ass
 
@@ -155,6 +181,7 @@ def _gerar_ass_simples(segmentos, inicio_global, fim_global, video_w, video_h, e
     style_map = {"neon": "Neon", "box": "Box", "sombra": "Sombra"}
     style_name = style_map.get(estilo, "Sombra")
 
+    filtrados = []
     for seg in segmentos:
         if seg["fim"] < inicio_global or seg["inicio"] > fim_global:
             continue
@@ -165,12 +192,23 @@ def _gerar_ass_simples(segmentos, inicio_global, fim_global, video_w, video_h, e
         if not texto:
             continue
         texto = _quebrar_texto_legenda(texto)[0]
+        t_start = max(seg["inicio"], inicio_global)
+        t_end = min(seg["fim"], fim_global)
+        filtrados.append({"t_start": t_start, "t_end": t_end, "texto": texto})
 
-        t_start = max(seg["inicio"], inicio_global) - inicio_global
-        t_end = min(seg["fim"], fim_global) - inicio_global
+    filtrados.sort(key=lambda s: s["t_start"])
 
-        escaped = _escape_ass(texto)
-        ass += f"Dialogue: 0,{_format_ass_time(t_start)},{_format_ass_time(t_end)},{style_name},,0,0,0,,{escaped}\n"
+    prev_end = inicio_global
+    for item in filtrados:
+        t_start = max(item["t_start"], prev_end)
+        t_end = item["t_end"]
+        if t_start >= t_end:
+            continue
+
+        escaped = _escape_ass(item["texto"])
+        ass += f"Dialogue: 0,{_format_ass_time(t_start - inicio_global)},{_format_ass_time(t_end - inicio_global)},{style_name},,0,0,0,,{escaped}\n"
+
+        prev_end = t_end
 
     return ass
 
@@ -372,7 +410,9 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
             overlay = Image.new("RGBA", (w_vid, h_vid), (0, 0, 0, 0))
             draw = ImageDraw.Draw(overlay)
             draw.text((x + 2, y + 2), texto, fill=(0, 0, 0, 180), font=font)
-            draw.text((x, y), texto, fill=(255, 255, 50), font=font)
+            hl_hex = HIGHLIGHT_COLOR.lstrip("#")
+            hl_rgb = tuple(int(hl_hex[i:i+2], 16) for i in (0, 2, 4))
+            draw.text((x, y), texto, fill=hl_rgb, font=font)
             frame_img = Image.alpha_composite(frame_img, overlay)
 
     return frame_img.convert("RGB")
