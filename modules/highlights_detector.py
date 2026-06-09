@@ -16,9 +16,16 @@ CATEGORIAS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "mome
 
 def _carregar_categorias():
     default = {
-        "engraçado": {"palavras": ["kkk", "haha", "rindo", "engraçado"], "peso": 3},
-        "sério": {"palavras": ["sério", "importante", "grave"], "peso": 3},
-        "emocionante": {"palavras": ["chorar", "emocionante", "saudade"], "peso": 3},
+        "engraçado": {"palavras": ["kkk", "haha", "rindo", "engraçado", "hilar", "piada", "zuado", "morri"], "peso": 3},
+        "sério": {"palavras": ["sério", "importante", "grave", "preocupante", "urgente", "atenção"], "peso": 3},
+        "emocionante": {"palavras": ["chorar", "emocionante", "saudade", "emoção", "comovido", "tocou"], "peso": 3},
+        "confronto": {"palavras": ["briga", "confronto", "discussão", "discutindo", "irado", "absurdo", "mentira", "mentiroso", "covarde", "ladrão"], "peso": 4},
+        "revelação": {"palavras": ["descobri", "revelar", "segredo", "ninguém sabe", "escondido", "verdade", "surpresa"], "peso": 4},
+        "dinheiro": {"palavras": ["dinheiro", "milhão", "milhões", "salário", "preço", "caro", "barato", "lucro", "prejuízo", "grana", "rico", "pobre"], "peso": 2},
+        "polêmica": {"palavras": ["polêmica", "controverso", "cancelado", "escândalo", "opinião", "discordo", "errado", "certo"], "peso": 3},
+        "política": {"palavras": ["governo", "presidente", "político", "eleição", "voto", "corrupção", "congresso", "ministro", "senador", "deputado"], "peso": 2},
+        "forte": {"palavras": ["insano", "absurdo", "loucura", "nunca vi", "impressionante", "inacreditável", "bizarro", "chocante"], "peso": 3},
+        "motivacional": {"palavras": ["conseguir", "vitória", "superar", "lutando", "força", "nunca desista", "sonho", "focado", "disciplina"], "peso": 2},
     }
     if os.path.exists(CATEGORIAS_PATH):
         try:
@@ -33,18 +40,19 @@ CATEGORIAS = _carregar_categorias()
 
 PROMPT_AVALIAR = """You are a viral video editor specializing in Brazilian Portuguese content. Analyze the transcript segment below (spoken in Portuguese) and classify what type of moment it is.
 
-Categories: funny, serious, emotional, revelation, controversial, strong_opinion, surreal, confrontation, motivational, fear
+Categories: funny, serious, emotional, revelation, controversial, strong_opinion, surreal, confrontation, motivational, fear, plot_twist, gossip, drama, life_lesson, debate, expose, hot_take, story_time, controversy, money_talk
 
 Respond ONLY with valid JSON, no extra text:
 {"bom": true, "categoria": "type", "score_viral": 7, "titulo": "short title in Portuguese", "hook_text": "ACTUAL QUOTE FROM THE SEGMENT IN PORTUGUESE", "motivo": "brief reason in English", "tema": "main topic in 3 words max"}
 
 Rules:
 - score_viral: 1-10 (be strict: most content is 1-4, only genuinely engaging moments get 7+)
-- hook_text: MUST be a real sentence extracted from the transcript, not invented
-- titulo: short catchy title in Portuguese
-- tema: identify the specific topic/theme discussed (e.g. "futebol", "relacionamento", "medo de altura")
-- If not interesting: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": "", "tema": ""}
-- IMPORTANT: Each clip must be about a DIFFERENT topic/conversation. Reject segments that discuss the same thing as others."""
+- hook_text: MUST be the most impactful sentence extracted from the transcript, not invented
+- titulo: short catchy title in Portuguese that creates curiosity
+- tema: identify the specific topic/theme discussed (e.g. "futebol", "relacionamento", "medo de altura", "politica", "dinheiro")
+- IMPORTANT: Prioritize moments with strong emotions, unexpected reveals, hot opinions, or dramatic pauses
+- IMPORTANT: Each clip must be about a DIFFERENT topic/conversation. Reject segments that discuss the same thing as others.
+- If not interesting: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": "", "tema": ""}"""
 
 
 def _usar_ollama():
