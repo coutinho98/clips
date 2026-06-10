@@ -95,21 +95,33 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
         job_id = gerar_job_id(url, video_path)
 
         caminho_video = None
+        video_titulo = None
         if tem_etapa(job_id, "download"):
             cached = obter_etapa(job_id, "download")
             if cached and os.path.exists(cached.get("caminho", "")):
                 caminho_video = cached["caminho"]
+                video_titulo = cached.get("titulo")
                 hook.emit("download", f"Reutilizando vídeo em cache...")
 
         if not caminho_video:
             if url and not video_path:
-                caminho_video = baixar_live(url)
+                caminho_video, video_titulo = baixar_live(url)
                 if not caminho_video:
                     _emit("Erro ao baixar", 0, error="Falha no download")
                     return
             else:
                 caminho_video = video_path
-            salvar_cache(job_id, "download", {"caminho": caminho_video, "url": url})
+                video_titulo = os.path.splitext(os.path.basename(video_path))[0] if video_path else None
+            salvar_cache(job_id, "download", {"caminho": caminho_video, "url": url, "titulo": video_titulo})
+
+        import re as _re
+        if video_titulo:
+            safe_title = _re.sub(r'[^\w\s-]', '', video_titulo)[:50].strip().replace(' ', '_')
+        else:
+            safe_title = _re.sub(r'[^\w]', '', job_id)[:30]
+        output_dir = os.path.join(str(PASTA_OUTPUT), safe_title)
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"  Output: {output_dir}")
 
         hook.emit("audio", "Extraindo áudio...")
         caminho_audio = None
@@ -210,6 +222,7 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
             estilo_legenda=config.get("subtitle_style", "karaoke"),
             zoom_dinamico=config.get("zoom_dinamico", False),
             fade_transition=config.get("fade_transition", 0.0),
+            output_dir=output_dir,
         )
 
         import json as _json

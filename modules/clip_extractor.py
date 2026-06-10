@@ -83,7 +83,7 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
                   segmentos_legenda=None, hook_text=None,
                   bg_music_path=None, bg_music_volume=0.15,
                   estilo_legenda="neon", zoom_dinamico=False,
-                  fade_transition=0.0, probe_cache=None):
+                  fade_transition=0.0, probe_cache=None, output_dir=None):
     duracao = fim_seg - inicio_seg
     if duracao > REELS_MAX_DURACAO:
         fim_seg = inicio_seg + REELS_MAX_DURACAO
@@ -96,10 +96,12 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
         return gerar_video_com_legendas(
             caminho_video, segmentos_legenda, inicio_seg, fim_seg,
             titulo=titulo, estilo=estilo_legenda, crop_vertical=crop_vertical,
-            fade_transition=fade_transition,
+            fade_transition=fade_transition, zoom_dinamico=zoom_dinamico,
+            output_dir=output_dir,
         )
     nome_arquivo = re.sub(r'[?#%&\\<>|*]', '', titulo.replace(" ", "_").replace("/", "_"))[:50]
-    caminho_saida = os.path.join(PASTA_OUTPUT, f"corte_{nome_arquivo}.mp4")
+    out_dir = output_dir or PASTA_OUTPUT
+    caminho_saida = os.path.join(out_dir, f"corte_{nome_arquivo}.mp4")
 
     if probe_cache and caminho_video in probe_cache:
         probe = probe_cache[caminho_video]
@@ -284,7 +286,7 @@ def extrair_multiplos_cortes(caminho_video, cortes, crop_vertical=True,
                               adicionar_legenda=False, transcricao=None,
                               bg_music_path=None, bg_music_volume=0.15,
                               estilo_legenda="neon", zoom_dinamico=False,
-                              fade_transition=0.0):
+                              fade_transition=0.0, output_dir=None):
     resultados = []
     _probe_cache = {}
 
@@ -319,6 +321,7 @@ def extrair_multiplos_cortes(caminho_video, cortes, crop_vertical=True,
                 zoom_dinamico=zoom_dinamico,
                 fade_transition=fade_transition,
                 probe_cache=_probe_cache,
+                output_dir=output_dir,
             )
             if caminho:
                 import json

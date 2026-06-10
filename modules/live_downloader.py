@@ -3,6 +3,19 @@ import subprocess
 from config import PASTA_TEMP
 
 
+def _obter_titulo(url):
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "--get-title", "--no-playlist", url],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
 def baixar_live(url, qualidade=None, pasta_saida=None):
     if pasta_saida is None:
         pasta_saida = PASTA_TEMP
@@ -34,6 +47,8 @@ def baixar_live(url, qualidade=None, pasta_saida=None):
 
     print(f"  Baixando live (melhor qualidade): {url}")
 
+    titulo_video = _obter_titulo(url)
+
     try:
         resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
 
@@ -51,7 +66,7 @@ def baixar_live(url, qualidade=None, pasta_saida=None):
             resultado = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=7200)
             if resultado.returncode != 0:
                 print(f"  [ERRO] yt-dlp falhou: {resultado.stderr}")
-                return None
+                return None, None
 
         for f in os.listdir(pasta_saida):
             if f.startswith(f"live_{video_id}.") and f.endswith(".mp4"):
@@ -65,16 +80,18 @@ def baixar_live(url, qualidade=None, pasta_saida=None):
                 )
                 print(f"  Download concluído: {tamanho_mb:.1f} MB")
                 print(f"  Info: {probe.stdout.strip()}")
-                return caminho
+                if titulo_video:
+                    print(f"  Título: {titulo_video}")
+                return caminho, titulo_video
 
         print("  [ERRO] Arquivo de vídeo não encontrado após download")
-        return None
+        return None, None
     except FileNotFoundError:
         print("  [ERRO] yt-dlp não encontrado. Instale com: pip install yt-dlp")
-        return None
+        return None, None
     except subprocess.TimeoutExpired:
         print("  [ERRO] Timeout no download (excedeu 2 horas)")
-        return None
+        return None, None
 
 
 def baixar_audio_live(url, pasta_saida=None):
