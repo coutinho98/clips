@@ -36,11 +36,15 @@ async def list_cuts():
     if not PASTA_OUTPUT.exists():
         return {"cuts": cuts}
 
-    for f in sorted(PASTA_OUTPUT.glob("corte_*.mp4"), key=lambda x: x.stat().st_mtime, reverse=True):
+    all_files = list(PASTA_OUTPUT.glob("corte_*.mp4"))
+    for d in PASTA_OUTPUT.iterdir():
+        if d.is_dir():
+            all_files.extend(d.glob("corte_*.mp4"))
+
+    for f in sorted(all_files, key=lambda x: x.stat().st_mtime, reverse=True):
         size_mb = f.stat().st_size / (1024 * 1024)
         nome = f.stem.replace("corte_", "")
 
-        import re
         duracao = 0
         try:
             import subprocess
@@ -53,26 +57,14 @@ async def list_cuts():
         except Exception:
             pass
 
-        score = 0
-        relatorio = None
-        for rpt in PASTA_OUTPUT.glob("relatorio_cortes_*.json"):
-            try:
-                with open(rpt, "r", encoding="utf-8") as rf:
-                    rpt_data = json.load(rf)
-                for c in rpt_data.get("cortes", []):
-                    if c.get("status") == "ok" and nome in c.get("titulo", ""):
-                        score = c.get("score", 0)
-                        break
-            except Exception:
-                pass
-
         cuts.append({
             "cut_id": f.stem,
             "titulo": nome,
             "arquivo": f.name,
+            "caminho": str(f),
             "tamanho_mb": round(size_mb, 1),
             "duracao": duracao,
-            "score": score,
+            "pasta": f.parent.name if f.parent != PASTA_OUTPUT else "",
         })
 
     return {"cuts": cuts}
@@ -81,6 +73,13 @@ async def list_cuts():
 @router.get("/cuts/{filename}")
 async def download_cut(filename: str):
     filepath = PASTA_OUTPUT / filename
+    if not filepath.exists():
+        for d in PASTA_OUTPUT.iterdir():
+            if d.is_dir():
+                candidate = d / filename
+                if candidate.exists():
+                    filepath = candidate
+                    break
     if not filepath.exists():
         return {"error": "not found"}
     return FileResponse(
@@ -92,6 +91,13 @@ async def download_cut(filename: str):
 @router.get("/cuts/{filename}/download")
 async def download_cut_file(filename: str):
     filepath = PASTA_OUTPUT / filename
+    if not filepath.exists():
+        for d in PASTA_OUTPUT.iterdir():
+            if d.is_dir():
+                candidate = d / filename
+                if candidate.exists():
+                    filepath = candidate
+                    break
     if not filepath.exists():
         return {"error": "not found"}
     return FileResponse(

@@ -240,15 +240,18 @@ def _probe_video(caminho_video):
 
 def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
                               titulo="corte", estilo="neon", crop_vertical=True,
-                              fade_transition=0.0):
+                              fade_transition=0.0, zoom_dinamico=False, output_dir=None):
     if fim_seg - inicio_seg > REELS_MAX_DURACAO:
         fim_seg = inicio_seg + REELS_MAX_DURACAO
 
     print(f"  Gerando legendas ASS ({estilo}): {inicio_seg:.1f}s - {fim_seg:.1f}s")
 
     nome_arquivo = _sanitize_nome(titulo)
-    ass_path = os.path.join(PASTA_TEMP, f"{nome_arquivo}.ass")
-    caminho_saida = os.path.join(PASTA_OUTPUT, f"corte_{nome_arquivo}.mp4")
+    import hashlib
+    safe_name = hashlib.md5(titulo.encode()).hexdigest()[:10]
+    ass_path = os.path.join(PASTA_TEMP, f"sub_{safe_name}.ass")
+    out_dir = output_dir or PASTA_OUTPUT
+    caminho_saida = os.path.join(out_dir, f"corte_{nome_arquivo}.mp4")
 
     video_w, video_h = RESOLUCAO
 
