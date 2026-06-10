@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  Link,
-  Upload,
-  HardDrive,
-  AlertCircle,
-  Film,
-  ArrowRight,
-  FolderOpen,
+  Link, Upload, HardDrive, AlertCircle, Film, ArrowRight, FolderOpen,
+  Check, Loader2, CircleDot, ScanSearch, Scissors, Sparkles,
 } from 'lucide-react'
 
-export default function ProcessingPanel({ onStart, onUpload, processing, progress, step, error }) {
+const STEP_ICONS = {
+  download: Film,
+  transcribe: CircleDot,
+  detect: ScanSearch,
+  cut: Scissors,
+  render: Sparkles,
+}
+
+export default function ProcessingPanel({ onStart, onUpload, processing, progress, step, error, pipeline, onCancel }) {
   const urlRef = useRef('')
   const fileRef = useRef(null)
   const [localVideos, setLocalVideos] = useState([])
@@ -17,9 +20,7 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
   const [activeTab, setActiveTab] = useState('url')
   const [dragOver, setDragOver] = useState(false)
 
-  useEffect(() => {
-    fetchLocalVideos()
-  }, [])
+  useEffect(() => { fetchLocalVideos() }, [])
 
   async function fetchLocalVideos() {
     try {
@@ -52,15 +53,6 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
     if (file) onUpload(file)
   }
 
-  function handleDragOver(e) {
-    e.preventDefault()
-    setDragOver(true)
-  }
-
-  function handleDragLeave() {
-    setDragOver(false)
-  }
-
   return (
     <div className="panel">
       <div className="panel-header">
@@ -72,26 +64,14 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
 
       <div className="panel-body">
         <div className="tabs">
-          <button
-            className={`tab ${activeTab === 'url' ? 'active' : ''}`}
-            onClick={() => setActiveTab('url')}
-          >
-            <Link className="tab-icon" />
-            URL
+          <button className={`tab ${activeTab === 'url' ? 'active' : ''}`} onClick={() => setActiveTab('url')}>
+            <Link className="tab-icon" /> URL
           </button>
-          <button
-            className={`tab ${activeTab === 'upload' ? 'active' : ''}`}
-            onClick={() => setActiveTab('upload')}
-          >
-            <Upload className="tab-icon" />
-            Upload
+          <button className={`tab ${activeTab === 'upload' ? 'active' : ''}`} onClick={() => setActiveTab('upload')}>
+            <Upload className="tab-icon" /> Upload
           </button>
-          <button
-            className={`tab ${activeTab === 'local' ? 'active' : ''}`}
-            onClick={() => setActiveTab('local')}
-          >
-            <HardDrive className="tab-icon" />
-            Local
+          <button className={`tab ${activeTab === 'local' ? 'active' : ''}`} onClick={() => setActiveTab('local')}>
+            <HardDrive className="tab-icon" /> Local
           </button>
         </div>
 
@@ -99,22 +79,15 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
           <div className="fade-in">
             <div className="form-group">
               <label className="form-label">URL da Live (YouTube, Twitch, etc)</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  className="form-input"
-                  type="text"
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input className="form-input" type="text"
                   placeholder="https://www.youtube.com/watch?v=..."
                   onChange={(e) => urlRef.current = e.target.value}
                   disabled={processing}
                   onKeyDown={(e) => e.key === 'Enter' && handleSubmitUrl()}
-                  style={{ flex: 1, minWidth: 0 }}
-                />
-                <button
-                  className="btn btn-primary"
-                  onClick={handleSubmitUrl}
-                  disabled={processing}
-                >
-                  <ArrowRight size={16} />
+                  style={{ flex: 1, minWidth: 0 }} />
+                <button className="btn btn-primary" onClick={handleSubmitUrl} disabled={processing}>
+                  <ArrowRight size={14} />
                 </button>
               </div>
             </div>
@@ -123,24 +96,16 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
 
         {activeTab === 'upload' && (
           <div className="fade-in">
-            <div
-              className="upload-zone"
+            <div className="upload-zone"
               style={dragOver ? { borderColor: 'var(--accent)', background: 'var(--accent-bg)' } : {}}
               onClick={() => fileRef.current?.click()}
               onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-            >
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}>
               <Upload className="upload-zone-icon" />
               <div className="upload-zone-title">Arraste um video ou clique para selecionar</div>
               <div className="upload-zone-hint">MP4, MOV, AVI, MKV</div>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="video/*"
-                onChange={handleFileChange}
-                style={{ display: 'none' }}
-              />
+              <input ref={fileRef} type="file" accept="video/*" onChange={handleFileChange} style={{ display: 'none' }} />
             </div>
           </div>
         )}
@@ -148,30 +113,17 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
         {activeTab === 'local' && (
           <div className="fade-in">
             <div className="form-group">
-              <label className="form-label">
-                <FolderOpen className="form-label-icon" />
-                Videos disponiveis no servidor
-              </label>
-              <select
-                className="form-select"
-                value={selectedVideo}
-                onChange={(e) => setSelectedVideo(e.target.value)}
-                disabled={processing}
-              >
+              <label className="form-label"><FolderOpen className="form-label-icon" /> Videos no servidor</label>
+              <select className="form-select" value={selectedVideo}
+                onChange={(e) => setSelectedVideo(e.target.value)} disabled={processing}>
                 <option value="">Selecione um video...</option>
                 {localVideos.map((v) => (
-                  <option key={v.arquivo} value={v.caminho}>
-                    {v.arquivo} ({v.tamanho_mb} MB)
-                  </option>
+                  <option key={v.arquivo} value={v.caminho}>{v.arquivo} ({v.tamanho_mb} MB)</option>
                 ))}
               </select>
             </div>
-            <button
-              className="btn btn-primary"
-              onClick={handleLocalProcess}
-              disabled={processing || !selectedVideo}
-              style={{ width: '100%' }}
-            >
+            <button className="btn btn-primary" onClick={handleLocalProcess}
+              disabled={processing || !selectedVideo} style={{ width: '100%' }}>
               Processar Video
             </button>
           </div>
@@ -179,15 +131,38 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
 
         {(processing || progress > 0) && (
           <div className="progress-section">
-            <div className="progress-header">
-              <span className="progress-step">{step}</span>
-              <span className="progress-pct">{Math.round(progress)}%</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div className="progress-header">
+                  <span className="progress-step">{step}</span>
+                  <span className="progress-pct">{Math.round(progress)}%</span>
+                </div>
+                <div className="progress-bar-bg">
+                  <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
+                </div>
+              </div>
+              {processing && (
+                <button className="cancel-btn" onClick={onCancel}>
+                  Cancelar
+                </button>
+              )}
             </div>
-            <div className="progress-bar-bg">
-              <div
-                className="progress-bar-fill"
-                style={{ width: `${progress}%` }}
-              />
+
+            <div className="pipeline-steps">
+              {pipeline.map((s, i) => {
+                const Icon = STEP_ICONS[s.key] || CircleDot
+                return (
+                  <span key={s.key} style={{ display: 'contents' }}>
+                    <div className={`pipeline-step ${s.status}`}>
+                      <Icon className="pipeline-step-icon" />
+                      {s.label}
+                    </div>
+                    {i < pipeline.length - 1 && (
+                      <div className={`pipeline-connector ${s.status === 'done' ? 'done' : ''}`} />
+                    )}
+                  </span>
+                )
+              })}
             </div>
           </div>
         )}
