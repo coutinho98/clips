@@ -103,6 +103,14 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                 video_titulo = cached.get("titulo")
                 hook.emit("download", f"Reutilizando vídeo em cache...")
 
+        if caminho_video and not video_titulo:
+            from modules.live_downloader import _obter_titulo
+            video_titulo = _obter_titulo(url) if url else None
+            if not video_titulo and cached:
+                video_titulo = cached.get("titulo")
+            if video_titulo:
+                salvar_cache(job_id, "download", {"caminho": caminho_video, "url": url, "titulo": video_titulo})
+
         if not caminho_video:
             if url and not video_path:
                 caminho_video, video_titulo = baixar_live(url)
@@ -244,6 +252,7 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                         "inicio": r["inicio"],
                         "fim": r["fim"],
                         "titulo": r["titulo"],
+                        "score": r.get("score", 0),
                         "segmentos": segs_do_corte,
                     }, f, ensure_ascii=False)
 

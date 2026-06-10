@@ -25,6 +25,14 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
   const [isPlaying, setIsPlaying] = useState(false)
   const debounceRef = useRef(null)
   const videoRef = useRef(null)
+  const prevUrlRef = useRef(null)
+  const abortRef = useRef(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   useEffect(() => {
     const initial = {
@@ -38,35 +46,48 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
     setEditConfig(initial)
     setHistory([initial])
     setHistoryIdx(0)
-  }, [cut?.cut_id, config])
-
-  useEffect(() => {
-    fetchPreview()
-    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }
   }, [cut?.cut_id])
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(fetchPreview, 400)
-    return () => clearTimeout(debounceRef.current)
-  }, [editConfig])
+    return () => {
+      clearTimeout(debounceRef.current)
+      if (abortRef.current) abortRef.current.abort()
+    }
+  }, [editConfig, cut?.cut_id])
+
+  useEffect(() => {
+    return () => {
+      if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current)
+    }
+  }, [])
 
   async function fetchPreview() {
-    if (!cut?.cut_id) return
+    if (!cut?.cut_id || !mountedRef.current) return
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setPreviewLoading(true)
     try {
       const res = await fetch(`/api/cut/${encodeURIComponent(cut.cut_id)}/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editConfig),
+        signal: controller.signal,
       })
+      if (!mountedRef.current) return
       if (res.ok) {
         const blob = await res.blob()
-        if (previewUrl) URL.revokeObjectURL(previewUrl)
-        setPreviewUrl(URL.createObjectURL(blob))
+        if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current)
+        const url = URL.createObjectURL(blob)
+        prevUrlRef.current = url
+        setPreviewUrl(url)
       }
-    } catch {}
-    setPreviewLoading(false)
+    } catch {
+      if (controller.signal.aborted) return
+    }
+    if (mountedRef.current) setPreviewLoading(false)
   }
 
   function pushHistory(newConfig) {

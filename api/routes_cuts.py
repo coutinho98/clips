@@ -57,13 +57,27 @@ async def list_cuts():
         except Exception:
             pass
 
+        score = 0
+        titulo = nome
+        meta_path = PASTA_TEMP / f"{f.stem}_meta.json"
+        if meta_path.exists():
+            try:
+                with open(meta_path, "r", encoding="utf-8") as mf:
+                    meta = json.loads(mf.read())
+                score = meta.get("score", 0)
+                if meta.get("titulo"):
+                    titulo = meta["titulo"]
+            except Exception:
+                pass
+
         cuts.append({
             "cut_id": f.stem,
-            "titulo": nome,
+            "titulo": titulo,
             "arquivo": f.name,
             "caminho": str(f),
             "tamanho_mb": round(size_mb, 1),
             "duracao": duracao,
+            "score": score,
             "pasta": f.parent.name if f.parent != PASTA_OUTPUT else "",
         })
 
