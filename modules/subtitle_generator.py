@@ -89,6 +89,7 @@ Style: Karaoke,FiraSans-SemiBold,{FONT_SIZE},{hl_ass},&HFF000000,&HFF000000,&H00
 Style: Neon,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
 Style: Box,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,3,2,1,2,10,10,{margin_v},1
 Style: Sombra,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,{margin_v},1
+Style: Hook,FiraSans-SemiBold,80,&H00FFFFFF,&H00000000,&H00000000,&HF0000000,-1,0,0,0,100,100,2,0,1,4,2,8,20,20,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -109,6 +110,20 @@ def _get_word_timestamps(seg, inicio_global, t_start, t_end):
             words_rel.append((max(w_start, t_start), min(w_end, t_end), w_text))
 
     return words_rel
+
+
+def _add_hook_to_ass(ass_content, hook_text, duracao_corte):
+    if not hook_text:
+        return ass_content
+    hook_dur = min(3.5, duracao_corte * 0.15)
+    escaped = _escape_ass(hook_text.upper())
+    dialogue = f"Dialogue: 2,0:00:00.00,{_format_ass_time(hook_dur)},Hook,,0,0,0,,{{\\fad(300,500)}}{escaped}\n"
+    insert_pos = ass_content.rfind("Dialogue:")
+    if insert_pos == -1:
+        return ass_content + dialogue
+    while insert_pos > 0 and ass_content[insert_pos - 1] != '\n':
+        insert_pos -= 1
+    return ass_content[:insert_pos] + dialogue + ass_content[insert_pos:]
 
 
 def _gerar_ass_karaoke(segmentos, inicio_global, fim_global, video_w, video_h):
@@ -240,7 +255,8 @@ def _probe_video(caminho_video):
 
 def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
                               titulo="corte", estilo="neon", crop_vertical=True,
-                              fade_transition=0.0, zoom_dinamico=False, output_dir=None):
+                              fade_transition=0.0, zoom_dinamico=False, output_dir=None,
+                              hook_text=None):
     if fim_seg - inicio_seg > REELS_MAX_DURACAO:
         fim_seg = inicio_seg + REELS_MAX_DURACAO
 
@@ -259,6 +275,8 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
         ass_content = _gerar_ass_karaoke(segmentos, inicio_seg, fim_seg, video_w, video_h)
     else:
         ass_content = _gerar_ass_simples(segmentos, inicio_seg, fim_seg, video_w, video_h, estilo)
+
+    ass_content = _add_hook_to_ass(ass_content, None, fim_seg - inicio_seg)
 
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write(ass_content)
@@ -342,6 +360,7 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
     video_path = meta.get("video_origem", "")
     fallback = meta.get("fallback", False)
     segmentos = meta.get("segmentos", [])
+    hook_text = meta.get("hook_text", "")
 
     if fallback and video_path:
         try:
@@ -400,6 +419,48 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
     except Exception:
         font = ImageFont.load_default()
 
+    overlay = Image.new("RGBA", (w_vid, h_vid), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    if hook_text:
+        try:
+            hook_font = ImageFont.truetype(FONT_PATH, 64)
+        except Exception:
+            hook_font = font
+        hook_upper = hook_text.upper()
+        max_w = w_vid - 60
+        words = hook_upper.split()
+        lines = []
+        current_line = ""
+        for w in words:
+            test = f"{current_line} {w}".strip()
+            bbox = draw_text_bbox(hook_font, test)
+            if bbox[2] - bbox[0] > max_w and current_line:
+                lines.append(current_line)
+                current_line = w
+            else:
+                current_line = test
+        if current_line:
+            lines.append(current_line)
+        lines = lines[:3]
+
+        bar_h = 30 + len(lines) * 80
+        bar = Image.new("RGBA", (w_vid, bar_h), (0, 0, 0, 180))
+        frame_img = Image.alpha_composite(frame_img, bar)
+
+        overlay2 = Image.new("RGBA", (w_vid, h_vid), (0, 0, 0, 0))
+        draw2 = ImageDraw.Draw(overlay2)
+        y = 15
+        for line in lines:
+            bbox = draw_text_bbox(hook_font, line)
+            tw = bbox[2] - bbox[0]
+            th = bbox[3] - bbox[1]
+            x = (w_vid - tw) // 2
+            draw2.text((x + 2, y + 2), line, fill=(0, 0, 0, 220), font=hook_font)
+            draw2.text((x, y), line, fill=(255, 255, 255, 255), font=hook_font)
+            y += th + 10
+        frame_img = Image.alpha_composite(frame_img, overlay2)
+
     if seg_ativo:
         texto = _limpar_texto_para_legenda(seg_ativo["texto"])
         if texto:
@@ -410,13 +471,13 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
             x = (w_vid - tw) // 2
             y = h_vid - TEXT_MARGIN_BOTTOM - th
 
-            overlay = Image.new("RGBA", (w_vid, h_vid), (0, 0, 0, 0))
-            draw = ImageDraw.Draw(overlay)
-            draw.text((x + 2, y + 2), texto, fill=(0, 0, 0, 180), font=font)
+            overlay3 = Image.new("RGBA", (w_vid, h_vid), (0, 0, 0, 0))
+            draw3 = ImageDraw.Draw(overlay3)
+            draw3.text((x + 2, y + 2), texto, fill=(0, 0, 0, 180), font=font)
             hl_hex = HIGHLIGHT_COLOR.lstrip("#")
             hl_rgb = tuple(int(hl_hex[i:i+2], 16) for i in (0, 2, 4))
-            draw.text((x, y), texto, fill=hl_rgb, font=font)
-            frame_img = Image.alpha_composite(frame_img, overlay)
+            draw3.text((x, y), texto, fill=hl_rgb, font=font)
+            frame_img = Image.alpha_composite(frame_img, overlay3)
 
     return frame_img.convert("RGB")
 

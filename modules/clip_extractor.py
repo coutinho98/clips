@@ -97,7 +97,7 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
             caminho_video, segmentos_legenda, inicio_seg, fim_seg,
             titulo=titulo, estilo=estilo_legenda, crop_vertical=crop_vertical,
             fade_transition=fade_transition, zoom_dinamico=zoom_dinamico,
-            output_dir=output_dir,
+            output_dir=output_dir, hook_text=hook_text,
         )
     nome_arquivo = re.sub(r'[?#%&\\<>|*]', '', titulo.replace(" ", "_").replace("/", "_"))[:50]
     out_dir = output_dir or PASTA_OUTPUT

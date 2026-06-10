@@ -23,6 +23,7 @@ def _carregar_categorias():
         "revelação": {"palavras": ["descobri", "revelar", "segredo", "ninguém sabe", "escondido", "verdade", "surpresa"], "peso": 4},
         "dinheiro": {"palavras": ["dinheiro", "milhão", "milhões", "salário", "preço", "caro", "barato", "lucro", "prejuízo", "grana", "rico", "pobre"], "peso": 2},
         "polêmica": {"palavras": ["polêmica", "controverso", "cancelado", "escândalo", "opinião", "discordo", "errado", "certo"], "peso": 3},
+        "escândalo": {"palavras": ["escândalo", "exposto", "provou", "flagrante", "denúncia", "comprometedor", "vazou", "vazamento", "evidência", "prova", "gravou", "flagrado"], "peso": 5},
         "política": {"palavras": ["governo", "presidente", "político", "eleição", "voto", "corrupção", "congresso", "ministro", "senador", "deputado"], "peso": 2},
         "forte": {"palavras": ["insano", "absurdo", "loucura", "nunca vi", "impressionante", "inacreditável", "bizarro", "chocante"], "peso": 3},
         "motivacional": {"palavras": ["conseguir", "vitória", "superar", "lutando", "força", "nunca desista", "sonho", "focado", "disciplina"], "peso": 2},
@@ -38,21 +39,35 @@ def _carregar_categorias():
 
 CATEGORIAS = _carregar_categorias()
 
-PROMPT_AVALIAR = """You are a viral video editor specializing in Brazilian Portuguese content. Analyze the transcript segment below (spoken in Portuguese) and classify what type of moment it is.
+PROMPT_AVALIAR = """You are a viral content strategist specializing in Brazilian Portuguese podcasts and livestreams. Your job is to find moments that will make people STOP SCROLLING and SHARE.
 
-Categories: funny, serious, emotional, revelation, controversial, strong_opinion, surreal, confrontation, motivational, fear, plot_twist, gossip, drama, life_lesson, debate, expose, hot_take, story_time, controversy, money_talk
+The transcript below is from a Brazilian podcast/livestream. The "[BEFORE]" section is what leads into the moment, "[SEGMENT]" is the actual clip, and "[AFTER]" is what follows.
 
-Respond ONLY with valid JSON, no extra text:
-{"bom": true, "categoria": "type", "score_viral": 7, "titulo": "short title in Portuguese", "hook_text": "ACTUAL QUOTE FROM THE SEGMENT IN PORTUGUESE", "motivo": "brief reason in English", "tema": "main topic in 3 words max"}
+Respond ONLY with valid JSON:
+{"bom": true, "categoria": "type", "score_viral": 8, "titulo": "short title in Portuguese", "hook_text": "ACTUAL QUOTE from the segment in Portuguese", "motivo": "brief reason in English", "tema": "main topic in 3 words max"}
 
-Rules:
-- score_viral: 1-10 (be strict: most content is 1-4, only genuinely engaging moments get 7+)
-- hook_text: MUST be the most impactful sentence extracted from the transcript, not invented
-- titulo: short catchy title in Portuguese that creates curiosity
-- tema: identify the specific topic/theme discussed (e.g. "futebol", "relacionamento", "medo de altura", "politica", "dinheiro")
-- IMPORTANT: Prioritize moments with strong emotions, unexpected reveals, hot opinions, or dramatic pauses
-- IMPORTANT: Each clip must be about a DIFFERENT topic/conversation. Reject segments that discuss the same thing as others.
-- If not interesting: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": "", "tema": ""}"""
+SCORE GUIDE (be honest and precise):
+- 9-10: Nuclear moment. Something shocking, a huge revelation, an explosive confrontation, someone crying/breaking down, a confession, a massive plot twist. This WILL go viral. People will share it everywhere. Examples: someone admits a crime, a guest walks out, an unknown fact is revealed, someone has a genuine emotional breakdown.
+- 7-8: Very strong moment. A bold controversial opinion, a funny unexpected reaction, a heated argument, a surprising story, a quotable hot take. People will clip this and share. Examples: "I think X is actually Y", a funny misunderstanding, a debate that gets heated, a crazy personal story.
+- 5-6: Decent moment. Interesting opinion, mild humor, somewhat engaging story. Might get some views but won't blow up.
+- 3-4: Below average. Normal conversation, nothing remarkable. People would scroll past.
+- 1-2: Boring filler. Small talk, transitions, mundane content.
+
+WHAT MAKES CONTENT VIRAL (prioritize these):
+1. EMOTIONAL INTENSITY - Anger, shock, genuine laughter, tears, fear. Raw unfiltered emotion.
+2. UNEXPECTED - Something the audience didn't see coming. Contradictions, surprises, reveals.
+3. CONTROVERSY - Hot takes, disagreements, calling someone out, defending unpopular positions.
+4. RELATABLE STORIES - Personal stories that viewers connect with emotionally.
+5. QUOTABLE - A single sentence so impactful people will quote it.
+6. CONFRONTATION - Tension between speakers, uncomfortable moments, someone being confronted.
+
+RULES:
+- hook_text: Extract the MOST IMPACTFUL actual sentence from the transcript. Not invented.
+- titulo: Short, punchy, creates CURIOSITY in Portuguese. Make people want to click.
+- tema: Specific topic in 3 words max (e.g. "espiritismo", "briga de casal", "medo de altura")
+- Each clip must be about a DIFFERENT topic. Duplicates waste slots.
+- If the segment is genuinely boring filler: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": "", "tema": ""}
+- DO NOT be overly generous. Score honestly. Most podcast content is 3-5. Only exceptional moments get 7+."""
 
 
 def _usar_ollama():
@@ -133,7 +148,7 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
     for cat, count in sorted(cats_count.items(), key=lambda x: -x[1]):
         print(f"    {cat}: {count}")
     print(f"  Avaliando com IA (paralelo)...")
-    avaliados = _avaliar_candidatos_paralelo(candidatos, ollama_disponivel)
+    avaliados = _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, segmentos)
 
     avaliados.sort(key=lambda x: x.get("score_viral") or 0, reverse=True)
     avaliados = _validar_e_corrigir(avaliados, segmentos)
@@ -150,7 +165,7 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
     return avaliados
 
 
-def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, max_workers=4):
+def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, segmentos, max_workers=4):
     avaliados = []
     total = len(candidatos)
 
@@ -162,7 +177,8 @@ def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, max_workers=4):
         label = f"[{i + 1}/{total}] {min_i:02d}:{seg_i:02d} ({cat_preliminar})"
 
         try:
-            conteudo = _chamar_ia(PROMPT_AVALIAR, texto, ollama_disponivel)
+            contexto = _construir_contexto(segmentos, cand["inicio_seg"], cand["fim_seg"])
+            conteudo = _chamar_ia(PROMPT_AVALIAR, contexto, ollama_disponivel)
             resultado = _parsear_resposta_bruta(conteudo)
             if isinstance(resultado, list):
                 resultado = resultado[0] if resultado else {}
@@ -173,7 +189,7 @@ def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, max_workers=4):
             resultado["fim_seg"] = cand["fim_seg"]
 
             score = resultado.get("score_viral") or 0
-            if resultado.get("bom", False) or score >= 6:
+            if resultado.get("bom", False) or score >= 5:
                 resultado["tipo"] = resultado.get("categoria", cat_preliminar)
                 resultado["tags"] = ["reels", "viral", "fyp", "shorts", "trending"]
                 resultado["descricao"] = "#reels #viral #fyp #shorts #trending"
@@ -200,9 +216,7 @@ def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, max_workers=4):
 
 def _gerar_candidatos(segmentos, picos_audio, max_candidatos):
     duracao_total = segmentos[-1]["fim"] - segmentos[0]["inicio"]
-    inicio_abs = segmentos[0]["inicio"]
     candidatos = []
-    temas_vistos = []
 
     blocos_tematicos = _segmentar_por_topico(segmentos)
 
@@ -212,6 +226,7 @@ def _gerar_candidatos(segmentos, picos_audio, max_candidatos):
             continue
 
         cat, peso = _classificar_por_palavras(texto)
+        peso += _pontuar_padrao_conversa(texto) * 3
 
         energia = 0
         centro = (bloco["inicio_seg"] + bloco["fim_seg"]) / 2.0
@@ -229,6 +244,40 @@ def _gerar_candidatos(segmentos, picos_audio, max_candidatos):
             "peso": peso,
         })
 
+    candidatos_audio = _candidatos_por_pico_audio(segmentos, picos_audio, candidatos)
+    candidatos.extend(candidatos_audio)
+
+    candidatos.sort(key=lambda x: x["peso"], reverse=True)
+    return candidatos[:max_candidatos]
+
+
+_PADROES_VIRAIS = [
+    (re.compile(r'\b(eu (nunca|sempre|juro|vi|descobri|percebi|notei))\b', re.I), 4),
+    (re.compile(r'\b(nunca (falei|contei|disse|imaginei))\b', re.I), 5),
+    (re.compile(r'\b(você (sabia|conhece|tem ideia|imagina))\b', re.I), 3),
+    (re.compile(r'\b(graças a deus|meu deus|caramba|velho|mano|caraca|putz|nossa)\b', re.I), 2),
+    (re.compile(r'[!?]{2,}'), 3),
+    (re.compile(r'\b(mas (na verdade|o problema|o pior|a verdade|calma))\b', re.I), 4),
+    (re.compile(r'\b(isso (é|e) (absurdo|insano|louco|incrível|bizarro|ridículo|errado|perigoso))\b', re.I), 5),
+    (re.compile(r'\b(não (acredito|esperava|sabia|concordo|acho|suporto|tolero|deixo))\b', re.I), 4),
+    (re.compile(r'\b(o que (você|vocês|a galera) (acha|pensa|faria|diria))\b', re.I), 3),
+    (re.compile(r'\b(presta atenção|escuta (isso|aqui)|olha (só|isso|aqui))\b', re.I), 4),
+    (re.compile(r'\b(eu (acho|penso|acredito) que (isso|ele|ela|isso (não )?é))\b', re.I), 3),
+    (re.compile(r'\b(se eu (fosse|tivesse|pudesse|contasse|dissesse))\b', re.I), 3),
+    (re.compile(r'\b(vingança|traição|segredo|vergonha|medo|ódio|ciúme|inveja)\b', re.I), 4),
+]
+
+
+def _pontuar_padrao_conversa(texto):
+    score = 0
+    for padrao, peso in _PADROES_VIRAIS:
+        if padrao.search(texto):
+            score += peso
+    return score
+
+
+def _candidatos_por_pico_audio(segmentos, picos_audio, candidatos_existentes):
+    novos = []
     for pico in (picos_audio or []):
         centro = (pico["inicio_seg"] + pico["fim_seg"]) / 2.0
         pico_dur = pico["fim_seg"] - pico["inicio_seg"]
@@ -237,7 +286,12 @@ def _gerar_candidatos(segmentos, picos_audio, max_candidatos):
         fim = inicio + janela
 
         sobreposto = False
-        for c in candidatos:
+        for c in candidatos_existentes:
+            overlap = min(c["fim_seg"], fim) - max(c["inicio_seg"], inicio)
+            if overlap > 15:
+                sobreposto = True
+                break
+        for c in novos:
             overlap = min(c["fim_seg"], fim) - max(c["inicio_seg"], inicio)
             if overlap > 15:
                 sobreposto = True
@@ -249,16 +303,15 @@ def _gerar_candidatos(segmentos, picos_audio, max_candidatos):
         if len(texto.split()) < 8:
             continue
         cat, peso = _classificar_por_palavras(texto)
-        candidatos.append({
+        peso += _pontuar_padrao_conversa(texto) * 3
+        novos.append({
             "inicio_seg": inicio,
             "fim_seg": fim,
             "texto": texto,
             "categoria": cat or "audio_peak",
             "peso": peso + 5,
         })
-
-    candidatos.sort(key=lambda x: x["peso"], reverse=True)
-    return candidatos[:max_candidatos]
+    return novos
 
 
 def _segmentar_por_topico(segmentos, silencio_gap=3.0, max_dur=90, min_dur=20):
@@ -551,6 +604,26 @@ def _texto_no_intervalo(segmentos, inicio, fim):
         if seg["fim"] >= inicio and seg["inicio"] <= fim:
             trechos.append(seg["texto"].strip())
     return " ".join(trechos)
+
+
+def _construir_contexto(segmentos, inicio_seg, fim_seg, contexto_antes=20, contexto_depois=15):
+    antes_inicio = max(0, inicio_seg - contexto_antes)
+    antes_fim = inicio_seg
+    depois_inicio = fim_seg
+    depois_fim = fim_seg + contexto_depois
+
+    texto_antes = _texto_no_intervalo(segmentos, antes_inicio, antes_fim)
+    texto_seg = _texto_no_intervalo(segmentos, inicio_seg, fim_seg)
+    texto_depois = _texto_no_intervalo(segmentos, depois_inicio, depois_fim)
+
+    partes = []
+    if texto_antes.strip():
+        partes.append(f"[BEFORE - what leads into the moment]:\n{texto_antes.strip()}")
+    partes.append(f"[SEGMENT - the actual clip]:\n{texto_seg.strip()}")
+    if texto_depois.strip():
+        partes.append(f"[AFTER - what follows]:\n{texto_depois.strip()}")
+
+    return "\n\n".join(partes)
 
 
 def detectar_highlights_por_audio(picos_audio, transcricao, max_cortes=5,
