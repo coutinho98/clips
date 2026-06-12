@@ -245,16 +245,24 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                     if seg["fim"] >= r["inicio"] and seg["inicio"] <= r["fim"]:
                         segs_do_corte.append(seg)
 
+                cut_meta = {
+                    "video_origem": caminho_video,
+                    "inicio": r["inicio"],
+                    "fim": r["fim"],
+                    "titulo": r["titulo"],
+                    "score": r.get("score", 0),
+                    "segmentos": segs_do_corte,
+                    "hook_text": r.get("hook_text", ""),
+                }
+
                 cut_meta_path = PASTA_TEMP / f"{cut_id}_meta.json"
                 with open(cut_meta_path, "w", encoding="utf-8") as f:
-                    _json.dump({
-                        "video_origem": caminho_video,
-                        "inicio": r["inicio"],
-                        "fim": r["fim"],
-                        "titulo": r["titulo"],
-                        "score": r.get("score", 0),
-                        "segmentos": segs_do_corte,
-                    }, f, ensure_ascii=False)
+                    _json.dump(cut_meta, f, ensure_ascii=False)
+
+                arquivo_stem = _os.path.splitext(_os.path.basename(r["caminho"]))[0]
+                arquivo_meta_path = PASTA_TEMP / f"{arquivo_stem}_meta.json"
+                with open(arquivo_meta_path, "w", encoding="utf-8") as f:
+                    _json.dump(cut_meta, f, ensure_ascii=False)
 
                 cuts_data.append({
                     "cut_id": cut_id,

@@ -1,6 +1,19 @@
 import os
+import re
 import subprocess
 from config import PASTA_TEMP
+
+
+def _extrair_video_id(url):
+    padroes = [
+        r'(?:v=|/v/|youtu\.be/|/embed/)([a-zA-Z0-9_-]{11})',
+        r'watch\?([a-zA-Z0-9_-]{11})',
+    ]
+    for p in padroes:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
+    return re.sub(r'[^a-zA-Z0-9_-]', '', url.split("/")[-1])[:20]
 
 
 def _obter_titulo(url):
@@ -16,13 +29,30 @@ def _obter_titulo(url):
     return None
 
 
+def _buscar_live_existente(video_id, pasta_saida):
+    for f in os.listdir(pasta_saida):
+        if f.startswith(f"live_{video_id}") and f.endswith(".mp4"):
+            caminho = os.path.join(pasta_saida, f)
+            tamanho_mb = os.path.getsize(caminho) / (1024 * 1024)
+            if tamanho_mb > 10:
+                print(f"  Live já existe em cache: {f} ({tamanho_mb:.1f} MB)")
+                return caminho
+    return None
+
+
 def baixar_live(url, qualidade=None, pasta_saida=None):
     if pasta_saida is None:
         pasta_saida = PASTA_TEMP
 
     os.makedirs(pasta_saida, exist_ok=True)
 
-    video_id = url.split("/")[-1].replace("=", "").replace("?", "").replace("&", "")[:40] if url else "video"
+    video_id = _extrair_video_id(url)
+
+    existente = _buscar_live_existente(video_id, pasta_saida)
+    if existente:
+        titulo = _obter_titulo(url)
+        return existente, titulo
+
     saida_template = os.path.join(pasta_saida, f"live_{video_id}.%(ext)s")
 
     if qualidade is None:

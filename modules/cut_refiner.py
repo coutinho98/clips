@@ -1,7 +1,7 @@
 import re
 
 
-def refinar_cortes(cortes, transcricao, duracao_min=20, duracao_max=45, duracao_ideal=35):
+def refinar_cortes(cortes, transcricao, duracao_min=20, duracao_max=90):
     segmentos = transcricao.get("segmentos", [])
     if not segmentos or not cortes:
         return cortes
@@ -30,12 +30,6 @@ def refinar_cortes(cortes, transcricao, duracao_min=20, duracao_max=45, duracao_
 
         rc["texto"] = _texto_no_intervalo(segmentos, inicio, fim)
         rc["duracao"] = rc["fim_seg"] - rc["inicio_seg"]
-
-        if rc["duracao"] > duracao_max:
-            rc["inicio_seg"], rc["fim_seg"] = _encurtar_corte(rc["inicio_seg"], rc["fim_seg"], segmentos, duracao_ideal)
-            rc["texto"] = _texto_no_intervalo(segmentos, rc["inicio_seg"], rc["fim_seg"])
-            rc["duracao"] = rc["fim_seg"] - rc["inicio_seg"]
-
         refinars.append(rc)
 
     refinars = _remover_sobreposicao(refinars)
@@ -133,37 +127,6 @@ def _expandir_corte(inicio, fim, segmentos, duracao_min):
             break
 
     return inicio, fim
-
-
-def _encurtar_corte(inicio, fim, segmentos, duracao_ideal):
-    segs = [s for s in segmentos if s["fim"] >= inicio and s["inicio"] <= fim]
-    if not segs:
-        return inicio, inicio + duracao_ideal
-
-    segs.sort(key=lambda s: s["inicio"])
-
-    melhor_inicio = inicio
-    melhor_fim = inicio + duracao_ideal
-    melhor_score = 0
-
-    for i in range(len(segs)):
-        candidato_fim = segs[i]["inicio"] + duracao_ideal
-        palavras = sum(len(s["texto"].split()) for s in segs if s["inicio"] >= segs[i]["inicio"] and s["fim"] <= candidato_fim)
-        if palavras > melhor_score:
-            melhor_score = palavras
-            melhor_inicio = segs[i]["inicio"]
-            melhor_fim = candidato_fim
-
-    novo_fim = min(melhor_fim, fim)
-    snap_fim = None
-    for s in segs:
-        if s["inicio"] <= novo_fim and s["fim"] >= novo_fim:
-            snap_fim = s["fim"]
-            break
-    if snap_fim and abs(snap_fim - novo_fim) < 3:
-        novo_fim = snap_fim
-
-    return melhor_inicio, novo_fim
 
 
 def _remover_sobreposicao(cortes, distancia_min=15):

@@ -20,16 +20,57 @@ def _sanitize_nome(titulo, max_len=50):
     return nome[:max_len]
 
 
+_PALAVRAS_VALIDAS_CURTAS = {
+    "eu", "tu", "ele", "ela", "nós", "nóis", "vocês", "vcs",
+    "sim", "não", "nao", "né", "né?", "tá", "ta", "to", "tô",
+    "há", "oh", "ah", "eh", "uh", "um", "uma", "uns", "umas",
+    "é", "e", "ou", "me", "te", "se", "lhe", "nos", "vos",
+    "o", "a", "os", "as", "ao", "aos", "à", "às",
+    "de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas",
+    "por", "pra", "pro", "pelo", "pela",
+    "com", "sem", "sob", "sobre",
+    "que", "quem", "quê", "qual", "quais", "quando", "onde",
+    "como", "assim", "aqui", "ali", "lá", "cá",
+    "já", "jamais", "nunca", "sempre", "ainda", "também", "tbm",
+    "mais", "menos", "muito", "pouco", "bem", "mal",
+    "isto", "isso", "esse", "essa", "este", "esta",
+    "ele", "ela", "eles", "elas", "só", "so",
+    "pai", "mãe", "filho", "Deus",
+    "ok", "okay", "wow", "hey", "ei", "ui",
+    "claro", "certo", "boa", "bom", "ruim",
+    "tem", "têm", "foi", "vem", "vai", "deu",
+    "pode", "deve", "quer", "ser", "ver",
+    "amo", "amar", "dor", "sol", "mar", "ar", "fim",
+    "teu", "tua", "nó", "nós", "deu", "diz", "viu",
+    "pé", "mão", "pai", "sim", "não", "sim?",
+    "cu", "rê", "não", "sim", "dê", "mim", "ti",
+    "né", "vê", "pô", "sei", "sê", "som", "cor",
+    "sim", "nem", "têm", "for", "dar", "rir", "ler",
+    "pcd", "hiv", "uv", "ppd",
+}
+
+
 def _limpar_texto_para_legenda(texto):
     texto = texto.strip()
     if not texto:
         return ""
+    texto = re.sub(r'["\u201c\u201d][^"\u201c\u201d]{0,15}["\u201c\u201d]', '', texto)
     texto = re.sub(r'\.{2,}', '...', texto)
     texto = re.sub(r'\?{2,}', '?', texto)
     texto = re.sub(r'!{2,}', '!', texto)
     texto = re.sub(r',{2,}', ',', texto)
+    texto = re.sub(r'\s*,\s*,\s*', ', ', texto)
+    texto = re.sub(r'(?:^|\s),', '', texto)
     palavras = texto.split()
-    if len(palavras) <= 3 and texto.endswith('.'):
+    palavras_limpas = []
+    for p in palavras:
+        p_lower = p.rstrip('.,;:!?').lower()
+        if len(p_lower) <= 3 and p_lower not in _PALAVRAS_VALIDAS_CURTAS:
+            continue
+        palavras_limpas.append(p)
+    texto = " ".join(palavras_limpas)
+    texto = re.sub(r'^\s*[,.:;]\s*', '', texto)
+    if len(palavras_limpas) <= 3 and texto.endswith('.'):
         if not re.search(r'[.!?]$', texto.rstrip('.')):
             texto = texto.rstrip('.')
     texto = re.sub(r'\s{2,}', ' ', texto).strip()
