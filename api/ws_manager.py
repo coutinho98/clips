@@ -9,6 +9,7 @@ class ConnectionManager:
     def __init__(self):
         self.active: List[WebSocket] = []
         self._queue: asyncio.Queue = asyncio.Queue()
+        self._running = False
 
     async def connect(self, ws: WebSocket):
         await ws.accept()
@@ -22,8 +23,12 @@ class ConnectionManager:
         await self._queue.put(data)
 
     async def broadcast_loop(self):
-        while True:
-            data = await self._queue.get()
+        self._running = True
+        while self._running:
+            try:
+                data = await asyncio.wait_for(self._queue.get(), timeout=1.0)
+            except asyncio.TimeoutError:
+                continue
             dead = []
             for ws in self.active:
                 try:
@@ -32,6 +37,9 @@ class ConnectionManager:
                     dead.append(ws)
             for ws in dead:
                 self.disconnect(ws)
+
+    def stop(self):
+        self._running = False
 
 
 manager = ConnectionManager()

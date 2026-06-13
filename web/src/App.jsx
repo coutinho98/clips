@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import ConfigPanel from './components/ConfigPanel'
 import ProcessingPanel from './components/ProcessingPanel'
 import CutsPanel from './components/CutsPanel'
-import VideoEditor from './components/VideoEditor'
+const VideoEditor = lazy(() => import('./components/VideoEditor'))
 import {
   Zap, Loader2, Scissors, Tv, PanelLeftClose, PanelLeftOpen,
   Film, ScissorsIcon, MonitorPlay, Download, ChevronDown,
@@ -188,14 +188,14 @@ export default function App() {
     wsRef.current = ws
   }
 
-  async function fetchConfig() {
+  const fetchConfig = useCallback(async () => {
     const res = await fetch('/api/config')
     const data = await res.json()
     setConfig(data.config)
     setDefaults(data.defaults)
-  }
+  }, [])
 
-  async function updateConfig(newConfig) {
+  const updateConfig = useCallback(async (newConfig) => {
     const res = await fetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -203,9 +203,9 @@ export default function App() {
     })
     const data = await res.json()
     setConfig(data.config)
-  }
+  }, [])
 
-  async function startProcess(url, localPath) {
+  const startProcess = useCallback(async (url, localPath) => {
     setError('')
     setProcessing(true)
     setProgress(0)
@@ -232,9 +232,9 @@ export default function App() {
       setProcessing(true)
     }
     if (data.config) setConfig(data.config)
-  }
+  }, [addToast])
 
-  async function uploadVideo(file) {
+  const uploadVideo = useCallback(async (file) => {
     setError('')
     setProcessing(true)
     setProgress(0)
@@ -255,9 +255,9 @@ export default function App() {
       setProcessing(false)
       addToast(data.error, 'error')
     }
-  }
+  }, [addToast])
 
-  async function handleRerender(editConfig) {
+  const handleRerender = useCallback(async (editConfig) => {
     if (!editingCut?.cut_id) return
     setProcessing(true)
     setProgress(0)
@@ -274,19 +274,19 @@ export default function App() {
       setProcessing(false)
       addToast(data.error, 'error')
     }
-  }
+  }, [editingCut, addToast])
 
-  function handleEditCut(cut) {
+  const handleEditCut = useCallback((cut) => {
     setEditingCut(cut)
     setActiveMainTab('editor')
-  }
+  }, [])
 
-  function handleCancelProcess() {
+  const handleCancelProcess = useCallback(() => {
     setProcessing(false)
     setProgress(0)
     setStep('')
     addToast('Processamento cancelado', 'info')
-  }
+  }, [addToast])
 
   const pipeline = getPipelineState(step)
 
@@ -446,6 +446,7 @@ export default function App() {
             )}
 
             {activeMainTab === 'editor' && editingCut && (
+              <Suspense fallback={<div className="editor-preview-placeholder">Carregando editor...</div>}>
               <VideoEditor
                 cut={editingCut}
                 config={config}
@@ -453,6 +454,7 @@ export default function App() {
                 onClose={() => { setEditingCut(null); setActiveMainTab('cuts') }}
                 processing={processing}
               />
+              </Suspense>
             )}
           </div>
         </div>

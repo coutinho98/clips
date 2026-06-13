@@ -43,31 +43,34 @@ PROMPT_AVALIAR = """You are a viral content strategist specializing in Brazilian
 
 The transcript below is from a Brazilian podcast/livestream. The "[BEFORE]" section is what leads into the moment, "[SEGMENT]" is the actual clip, and "[AFTER]" is what follows.
 
+CRITICAL: The clip must start where the CONVERSATION TOPIC begins, not in the middle. A viewer should understand what's being discussed from the very first second.
+
 Respond ONLY with valid JSON:
-{"bom": true, "categoria": "type", "score_viral": 8, "titulo": "short title in Portuguese", "hook_text": "ACTUAL QUOTE from the segment in Portuguese", "motivo": "brief reason in English", "tema": "main topic in 3 words max"}
+{"bom": true, "categoria": "type", "score_viral": 8, "titulo": "short title in Portuguese", "hook_text": "ACTUAL QUOTE from the segment in Portuguese", "motivo": "brief reason in English", "tema": "main topic in 3 words max", "inicio_sugerido": "first relevant sentence from BEFORE or SEGMENT that starts the topic"}
 
 SCORE GUIDE (be honest and precise):
-- 9-10: Nuclear moment. Something shocking, a huge revelation, an explosive confrontation, someone crying/breaking down, a confession, a massive plot twist. This WILL go viral. People will share it everywhere. Examples: someone admits a crime, a guest walks out, an unknown fact is revealed, someone has a genuine emotional breakdown.
-- 7-8: Very strong moment. A bold controversial opinion, a funny unexpected reaction, a heated argument, a surprising story, a quotable hot take. People will clip this and share. Examples: "I think X is actually Y", a funny misunderstanding, a debate that gets heated, a crazy personal story.
-- 5-6: Decent moment. Interesting opinion, mild humor, somewhat engaging story. Might get some views but won't blow up.
-- 3-4: Below average. Normal conversation, nothing remarkable. People would scroll past.
-- 1-2: Boring filler. Small talk, transitions, mundane content.
+- 9-10: Nuclear moment. Something shocking, a huge revelation, an explosive confrontation, someone crying/breaking down, a confession, a massive plot twist.
+- 7-8: Very strong moment. A bold controversial opinion, a funny unexpected reaction, a heated argument, a surprising story, a quotable hot take.
+- 5-6: Decent moment. Interesting opinion, mild humor, somewhat engaging story.
+- 3-4: Below average. Normal conversation, nothing remarkable.
+- 1-2: Boring filler.
 
-WHAT MAKES CONTENT VIRAL (prioritize these):
-1. EMOTIONAL INTENSITY - Anger, shock, genuine laughter, tears, fear. Raw unfiltered emotion.
-2. UNEXPECTED - Something the audience didn't see coming. Contradictions, surprises, reveals.
-3. CONTROVERSY - Hot takes, disagreements, calling someone out, defending unpopular positions.
-4. RELATABLE STORIES - Personal stories that viewers connect with emotionally.
+WHAT MAKES CONTENT VIRAL:
+1. EMOTIONAL INTENSITY - Anger, shock, genuine laughter, tears, fear.
+2. UNEXPECTED - Something the audience didn't see coming.
+3. CONTROVERSY - Hot takes, disagreements, calling someone out.
+4. RELATABLE STORIES - Personal stories that viewers connect with.
 5. QUOTABLE - A single sentence so impactful people will quote it.
-6. CONFRONTATION - Tension between speakers, uncomfortable moments, someone being confronted.
+6. CONFRONTATION - Tension between speakers, uncomfortable moments.
 
 RULES:
-- hook_text: Extract the MOST IMPACTFUL actual sentence from the transcript. Not invented.
-- titulo: Short, punchy, creates CURIOSITY in Portuguese. Make people want to click.
-- tema: Specific topic in 3 words max (e.g. "espiritismo", "briga de casal", "medo de altura")
+- hook_text: The MOST IMPACTFUL actual sentence from the transcript. Not invented.
+- titulo: Short, punchy, creates CURIOSITY in Portuguese.
+- tema: Specific topic in 3 words max
+- inicio_sugerido: The first sentence of the clip that makes sense as a START POINT. Must be an actual sentence from [BEFORE] or [SEGMENT].
 - Each clip must be about a DIFFERENT topic. Duplicates waste slots.
-- If the segment is genuinely boring filler: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": "", "tema": ""}
-- DO NOT be overly generous. Score honestly. Most podcast content is 3-5. Only exceptional moments get 7+."""
+- If boring: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": "", "tema": "", "inicio_sugerido": ""}
+- DO NOT be overly generous. Most podcast content is 3-5. Only exceptional moments get 7+."""
 
 
 def _usar_ollama():
@@ -97,7 +100,7 @@ def _chamar_ollama(system_prompt, user_content):
         "stream": False,
         "options": {
             "temperature": 0.2,
-            "num_predict": 800,
+            "num_predict": 400,
         }
     }
     resp = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=300)
@@ -135,7 +138,7 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
         print(f"  [ERRO] Nem Ollama nem OpenAI disponíveis")
         return []
 
-    candidatos = _gerar_candidatos(segmentos, picos_audio, max_cortes * 4)
+    candidatos = _gerar_candidatos(segmentos, picos_audio, max_cortes * 5)
     if not candidatos:
         print("  [ERRO] Nenhum candidato gerado")
         return []
@@ -187,6 +190,12 @@ def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, segmentos, max_w
 
             resultado["inicio_seg"] = cand["inicio_seg"]
             resultado["fim_seg"] = cand["fim_seg"]
+
+            inicio_sugerido = resultado.get("inicio_sugerido", "")
+            if inicio_sugerido:
+                novo_inicio = _encontrar_inicio_sugerido(inicio_sugerido, segmentos, cand["inicio_seg"] - 45, cand["inicio_seg"])
+                if novo_inicio is not None:
+                    resultado["inicio_seg"] = novo_inicio
 
             score = resultado.get("score_viral") or 0
             if resultado.get("bom", False) or score >= 5:
@@ -248,7 +257,55 @@ def _gerar_candidatos(segmentos, picos_audio, max_candidatos):
     candidatos.extend(candidatos_audio)
 
     candidatos.sort(key=lambda x: x["peso"], reverse=True)
-    return candidatos[:max_candidatos]
+    top = candidatos[:max_candidatos]
+
+    todos_indices = set(range(len(blocos_tematicos)))
+    top_indices = set()
+    for i, bloco in enumerate(blocos_tematicos):
+        for c in top:
+            if abs(bloco["inicio_seg"] - c["inicio_seg"]) < 5:
+                top_indices.add(i)
+                break
+
+    restantes = [i for i in todos_indices - top_indices
+                 if len(blocos_tematicos[i]["texto"].split()) >= 8]
+
+    import random as _random
+    _random.seed(42)
+    step = max(1, len(restantes) // max(max_candidatos // 2, 3))
+    amostrados = restantes[::step][:max_candidatos // 2]
+
+    for idx in amostrados:
+        bloco = blocos_tematicos[idx]
+        texto = bloco["texto"]
+        cat, peso = _classificar_por_palavras(texto)
+        peso += _pontuar_padrao_conversa(texto) * 3
+        energia = 0
+        centro = (bloco["inicio_seg"] + bloco["fim_seg"]) / 2.0
+        if picos_audio:
+            for pico in picos_audio:
+                if pico["inicio_seg"] <= centro <= pico["fim_seg"]:
+                    energia = max(energia, pico.get("energia_relacionada", 0))
+        peso += energia * 1.5
+
+        sobreposto = False
+        for c in top:
+            overlap = min(c["fim_seg"], bloco["fim_seg"]) - max(c["inicio_seg"], bloco["inicio_seg"])
+            if overlap > 10:
+                sobreposto = True
+                break
+        if sobreposto:
+            continue
+
+        top.append({
+            "inicio_seg": bloco["inicio_seg"],
+            "fim_seg": bloco["fim_seg"],
+            "texto": texto,
+            "categoria": cat or "amostra",
+            "peso": peso,
+        })
+
+    return top
 
 
 _PADROES_VIRAIS = [
@@ -519,23 +576,27 @@ def _validar_e_corrigir(cortes, segmentos):
     return validados
 
 
-def _remover_temas_duplicados(cortes, similaridade_min=0.5):
+def _remover_temas_duplicados(cortes, similaridade_min=0.4):
     if not cortes:
         return cortes
 
     selecionados = []
-    textos_base = []
+    temas_base = []
 
     for c in cortes:
+        tema_c = c.get("tema", "").lower().strip()
         texto_c = c.get("texto", "") or _hook_do_texto(c.get("hook_text", ""))
         palavras_c = set(re.sub(r'[^\w\s]', '', texto_c.lower()).split())
         palavras_c = {p for p in palavras_c if len(p) > 3}
 
         duplicado = False
-        for texto_base in textos_base:
+        for tema_base, texto_base in temas_base:
+            if tema_c and tema_base and tema_c == tema_base:
+                duplicado = True
+                break
+
             palavras_base = set(re.sub(r'[^\w\s]', '', texto_base.lower()).split())
             palavras_base = {p for p in palavras_base if len(p) > 3}
-
             intersecao = palavras_c & palavras_base
             uniao = palavras_c | palavras_base
             if uniao and len(intersecao) / len(uniao) > similaridade_min:
@@ -544,7 +605,7 @@ def _remover_temas_duplicados(cortes, similaridade_min=0.5):
 
         if not duplicado:
             selecionados.append(c)
-            textos_base.append(texto_c)
+            temas_base.append((tema_c, texto_c))
 
     removidos = len(cortes) - len(selecionados)
     if removidos > 0:
@@ -598,6 +659,29 @@ def _buscar_mais_proximo(inicio_alvo, segmentos, janela=60):
     return novo_inicio, novo_fim, texto
 
 
+def _encontrar_inicio_sugerido(frase_sugerida, segmentos, busca_inicio, busca_fim):
+    frase_clean = re.sub(r'[^\w\s]', '', frase_sugerida.lower().strip())
+    palavras_sugeridas = set(frase_clean.split())
+    if len(palavras_sugeridas) < 2:
+        return None
+
+    melhor_seg = None
+    melhor_overlap = 0
+    for seg in segmentos:
+        if seg["inicio"] < busca_inicio or seg["inicio"] > busca_fim:
+            continue
+        seg_clean = re.sub(r'[^\w\s]', '', seg["texto"].lower())
+        palavras_seg = set(seg_clean.split())
+        overlap = len(palavras_sugeridas & palavras_seg)
+        if overlap > melhor_overlap:
+            melhor_overlap = overlap
+            melhor_seg = seg
+
+    if melhor_seg and melhor_overlap >= len(palavras_sugeridas) * 0.4:
+        return melhor_seg["inicio"]
+    return None
+
+
 def _texto_no_intervalo(segmentos, inicio, fim):
     trechos = []
     for seg in segmentos:
@@ -606,7 +690,7 @@ def _texto_no_intervalo(segmentos, inicio, fim):
     return " ".join(trechos)
 
 
-def _construir_contexto(segmentos, inicio_seg, fim_seg, contexto_antes=20, contexto_depois=15):
+def _construir_contexto(segmentos, inicio_seg, fim_seg, contexto_antes=45, contexto_depois=10):
     antes_inicio = max(0, inicio_seg - contexto_antes)
     antes_fim = inicio_seg
     depois_inicio = fim_seg

@@ -3,6 +3,7 @@ import sys
 import io
 import re
 import json
+import hashlib
 import threading
 import subprocess
 from pathlib import Path
@@ -16,11 +17,27 @@ from api.ws_manager import manager as ws_manager
 
 router = APIRouter()
 
+_preview_cache = {}
+_preview_cache_lock = threading.Lock()
+_PREVIEW_CACHE_MAX = 50
+
+
+def _preview_cache_key(cut_id, body):
+    raw = json.dumps(body, sort_keys=True)
+    return f"{cut_id}:{hashlib.md5(raw.encode()).hexdigest()}"
+
 
 @router.post("/cut/{cut_id}/preview")
 async def preview_subtitle(cut_id: str, body: dict):
     from urllib.parse import unquote
     cut_id = unquote(cut_id)
+
+    cache_key = _preview_cache_key(cut_id, body)
+    with _preview_cache_lock:
+        if cache_key in _preview_cache:
+            buf = io.BytesIO(_preview_cache[cache_key])
+            buf.seek(0)
+            return StreamingResponse(buf, media_type="image/jpeg")
 
     meta = _get_cut_data(cut_id)
     if not meta:
@@ -44,9 +61,17 @@ async def preview_subtitle(cut_id: str, body: dict):
         return {"error": "failed to generate preview"}
 
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=85)
+    img.save(buf, format="JPEG", quality=75)
     buf.seek(0)
+    img_bytes = buf.getvalue()
 
+    with _preview_cache_lock:
+        if len(_preview_cache) >= _PREVIEW_CACHE_MAX:
+            oldest = next(iter(_preview_cache))
+            del _preview_cache[oldest]
+        _preview_cache[cache_key] = img_bytes
+
+    buf.seek(0)
     return StreamingResponse(buf, media_type="image/jpeg")
 
 

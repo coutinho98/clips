@@ -26,8 +26,14 @@ WEB_DIR = BASE_DIR / "web" / "dist"
 
 @asynccontextmanager
 async def lifespan(app):
-    asyncio.create_task(ws_manager.broadcast_loop())
+    task = asyncio.create_task(ws_manager.broadcast_loop())
     yield
+    ws_manager.stop()
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="Dark Channel Bot", version="1.0.0", lifespan=lifespan)
@@ -79,4 +85,4 @@ if WEB_DIR.exists():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=False, timeout_keep_alive=5)
+    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=False, timeout_keep_alive=5, timeout_graceful_shutdown=3)

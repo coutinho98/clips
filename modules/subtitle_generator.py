@@ -392,6 +392,58 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
     return caminho_saida
 
 
+_frame_cache = {}
+_frame_cache_max = 20
+
+PREVIEW_W = 360
+PREVIEW_H = 640
+
+
+def _get_cached_frame(video_path, tempo_preview, crop_vertical):
+    import io
+    from PIL import Image
+
+    cache_key = (video_path, round(tempo_preview, 1))
+    if cache_key in _frame_cache:
+        return _frame_cache[cache_key].copy()
+
+    w_vid, h_vid = RESOLUCAO
+    frame_img = None
+
+    if video_path and os.path.exists(video_path):
+        try:
+            result = subprocess.run([
+                "ffmpeg", "-y", "-ss", str(tempo_preview),
+                "-i", video_path, "-vframes", "1",
+                "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "5", "-",
+            ], capture_output=True, timeout=10)
+            if len(result.stdout) > 100:
+                frame_img = Image.open(io.BytesIO(result.stdout)).convert("RGBA")
+                fw, fh = frame_img.size
+                target_ratio = 9 / 16
+                current_ratio = fw / fh
+                if current_ratio > target_ratio:
+                    new_w = int(fh * target_ratio)
+                    x1 = (fw - new_w) // 2
+                    frame_img = frame_img.crop((x1, 0, x1 + new_w, fh))
+                elif current_ratio < target_ratio:
+                    new_h = int(fw / target_ratio)
+                    y1 = (fh - new_h) // 2
+                    frame_img = frame_img.crop((0, y1, fw, y1 + new_h))
+                frame_img = frame_img.resize((w_vid, h_vid), Image.BILINEAR)
+        except Exception:
+            pass
+
+    if frame_img is None:
+        frame_img = Image.new("RGBA", (w_vid, h_vid), (30, 30, 40, 255))
+
+    if len(_frame_cache) >= _frame_cache_max:
+        _frame_cache.pop(next(iter(_frame_cache)))
+    _frame_cache[cache_key] = frame_img.copy()
+
+    return frame_img
+
+
 def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
     import io
     from PIL import Image, ImageDraw, ImageFont
@@ -417,35 +469,16 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
     else:
         tempo_preview = inicio + min(3.0, (fim - inicio) / 2)
 
-    w_vid, h_vid = RESOLUCAO
+    frame_img = _get_cached_frame(video_path, tempo_preview, crop_vertical)
 
-    if video_path and os.path.exists(video_path):
-        try:
-            result = subprocess.run([
-                "ffmpeg", "-y", "-ss", str(tempo_preview),
-                "-i", video_path, "-vframes", "1",
-                "-f", "image2pipe", "-vcodec", "png", "-",
-            ], capture_output=True, timeout=15)
-            if len(result.stdout) > 100:
-                frame_img = Image.open(io.BytesIO(result.stdout)).convert("RGBA")
-                fw, fh = frame_img.size
-                target_ratio = 9 / 16
-                current_ratio = fw / fh
-                if current_ratio > target_ratio:
-                    new_w = int(fh * target_ratio)
-                    x1 = (fw - new_w) // 2
-                    frame_img = frame_img.crop((x1, 0, x1 + new_w, fh))
-                elif current_ratio < target_ratio:
-                    new_h = int(fw / target_ratio)
-                    y1 = (fh - new_h) // 2
-                    frame_img = frame_img.crop((0, y1, fw, y1 + new_h))
-                frame_img = frame_img.resize((w_vid, h_vid), Image.LANCZOS)
-            else:
-                frame_img = Image.new("RGBA", (w_vid, h_vid), (30, 30, 40, 255))
-        except Exception:
-            frame_img = Image.new("RGBA", (w_vid, h_vid), (30, 30, 40, 255))
-    else:
-        frame_img = Image.new("RGBA", (w_vid, h_vid), (30, 30, 40, 255))
+    scale_x = PREVIEW_W / RESOLUCAO[0]
+    scale_y = PREVIEW_H / RESOLUCAO[1]
+    frame_img = frame_img.resize((PREVIEW_W, PREVIEW_H), Image.BILINEAR)
+
+    w_vid, h_vid = PREVIEW_W, PREVIEW_H
+    preview_font_size = max(10, int(FONT_SIZE * scale_x))
+    preview_margin = int(TEXT_MARGIN_BOTTOM * scale_y)
+    preview_hook_font_size = max(12, int(64 * scale_x))
 
     seg_ativo = None
     for seg in segmentos:
@@ -456,20 +489,17 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
         seg_ativo = segmentos[len(segmentos) // 2]
 
     try:
-        font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
+        font = ImageFont.truetype(FONT_PATH, preview_font_size)
     except Exception:
         font = ImageFont.load_default()
 
-    overlay = Image.new("RGBA", (w_vid, h_vid), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-
     if hook_text:
         try:
-            hook_font = ImageFont.truetype(FONT_PATH, 64)
+            hook_font = ImageFont.truetype(FONT_PATH, preview_hook_font_size)
         except Exception:
             hook_font = font
         hook_upper = hook_text.upper()
-        max_w = w_vid - 60
+        max_w = w_vid - int(60 * scale_x)
         words = hook_upper.split()
         lines = []
         current_line = ""
@@ -485,13 +515,13 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
             lines.append(current_line)
         lines = lines[:3]
 
-        bar_h = 30 + len(lines) * 80
+        bar_h = int(30 * scale_y) + len(lines) * int(80 * scale_y)
         bar = Image.new("RGBA", (w_vid, bar_h), (0, 0, 0, 180))
         frame_img = Image.alpha_composite(frame_img, bar)
 
         overlay2 = Image.new("RGBA", (w_vid, h_vid), (0, 0, 0, 0))
         draw2 = ImageDraw.Draw(overlay2)
-        y = 15
+        y = int(15 * scale_y)
         for line in lines:
             bbox = draw_text_bbox(hook_font, line)
             tw = bbox[2] - bbox[0]
@@ -499,7 +529,7 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
             x = (w_vid - tw) // 2
             draw2.text((x + 2, y + 2), line, fill=(0, 0, 0, 220), font=hook_font)
             draw2.text((x, y), line, fill=(255, 255, 255, 255), font=hook_font)
-            y += th + 10
+            y += th + int(10 * scale_y)
         frame_img = Image.alpha_composite(frame_img, overlay2)
 
     if seg_ativo:
@@ -510,7 +540,7 @@ def _generate_preview_frame(cut_id, meta, estilo, crop_vertical):
             tw = bbox[2] - bbox[0]
             th = bbox[3] - bbox[1]
             x = (w_vid - tw) // 2
-            y = h_vid - TEXT_MARGIN_BOTTOM - th
+            y = h_vid - preview_margin - th
 
             overlay3 = Image.new("RGBA", (w_vid, h_vid), (0, 0, 0, 0))
             draw3 = ImageDraw.Draw(overlay3)
