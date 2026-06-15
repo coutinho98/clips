@@ -8,7 +8,7 @@ import threading
 import subprocess
 from pathlib import Path
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from typing import Optional
 
 from api.state import PASTA_OUTPUT, PASTA_TEMP
@@ -29,6 +29,7 @@ def _preview_cache_key(cut_id, body):
 
 @router.post("/cut/{cut_id}/preview")
 async def preview_subtitle(cut_id: str, body: dict):
+    import asyncio
     from urllib.parse import unquote
     cut_id = unquote(cut_id)
 
@@ -39,9 +40,9 @@ async def preview_subtitle(cut_id: str, body: dict):
             buf.seek(0)
             return StreamingResponse(buf, media_type="image/jpeg")
 
-    meta = _get_cut_data(cut_id)
+    meta = await asyncio.to_thread(_get_cut_data, cut_id)
     if not meta:
-        return {"error": f"cut not found: {cut_id}"}
+        return JSONResponse({"error": f"cut not found: {cut_id}"}, status_code=404)
 
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
     import modules.subtitle_generator as sub_mod
@@ -56,9 +57,9 @@ async def preview_subtitle(cut_id: str, body: dict):
     sub_mod.BASE_COLOR = body.get("base_color", "#B4B4B4")
     sub_mod.HIGHLIGHT_COLOR = body.get("highlight_color", "#FFFF32")
 
-    img = sub_mod._generate_preview_frame(cut_id, meta, estilo, crop)
+    img = await asyncio.to_thread(sub_mod._generate_preview_frame, cut_id, meta, estilo, crop)
     if img is None:
-        return {"error": "failed to generate preview"}
+        return JSONResponse({"error": "failed to generate preview"}, status_code=500)
 
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=75)
@@ -158,7 +159,7 @@ def _get_cut_data(cut_id):
 async def get_cut_meta(cut_id: str):
     meta = _get_cut_data(cut_id)
     if not meta:
-        return {"error": "not found"}
+        return JSONResponse({"error": "cut not found"}, status_code=404)
     return meta
 
 
@@ -169,15 +170,15 @@ async def rerender_cut(cut_id: str, body: dict):
 
     meta = _get_cut_data(cut_id)
     if not meta:
-        return {"error": "cut not found"}
+        return JSONResponse({"error": "cut not found"}, status_code=404)
 
     s = _get_state()
     if s.processing:
-        return {"error": "already processing"}
+        return JSONResponse({"error": "already processing"}, status_code=409)
 
     import asyncio
-    global _main_loop
-    _main_loop = asyncio.get_running_loop()
+    import api.routes_process as rp
+    rp._main_loop = asyncio.get_running_loop()
 
     thread = threading.Thread(
         target=_rerender_thread,
@@ -252,6 +253,7 @@ def _rerender_thread(cut_id, render_config, meta):
                 estilo=estilo,
                 crop_vertical=render_config.get("crop_vertical", True),
                 fade_transition=render_config.get("fade_transition", 0.3),
+                categoria=meta.get("categoria"),
             )
 
             if caminho_saida and os.path.exists(caminho_saida):

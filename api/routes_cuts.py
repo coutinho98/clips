@@ -1,10 +1,11 @@
 import os
 import json
 import time
+import asyncio
 import subprocess
 from pathlib import Path
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from api.state import PASTA_OUTPUT, PASTA_TEMP
 
 router = APIRouter()
@@ -57,6 +58,10 @@ async def list_local_videos():
 
 @router.get("/cuts")
 async def list_cuts():
+    return await asyncio.to_thread(_list_cuts_sync)
+
+
+def _list_cuts_sync():
     cuts = []
     if not PASTA_OUTPUT.exists():
         return {"cuts": cuts}
@@ -97,6 +102,42 @@ async def list_cuts():
         })
 
     return {"cuts": cuts}
+
+
+@router.get("/cuts/{filename}/thumb")
+async def get_cut_thumb(filename: str):
+    import io
+    filepath = PASTA_OUTPUT / filename
+    if not filepath.exists():
+        for d in PASTA_OUTPUT.iterdir():
+            if d.is_dir():
+                candidate = d / filename
+                if candidate.exists():
+                    filepath = candidate
+                    break
+    if not filepath.exists():
+        return FileResponse(str(PASTA_OUTPUT / "placeholder.jpg")) if (PASTA_OUTPUT / "placeholder.jpg").exists() else JSONResponse({"error": "not found"}, status_code=404)
+
+    thumb_dir = PASTA_TEMP / "thumbs"
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+    thumb_path = thumb_dir / f"{filepath.stem}.jpg"
+
+    if not thumb_path.exists():
+        def _gen_thumb():
+            dur = _get_duration_cached(filepath)
+            ts = max(0.5, dur * 0.1) if dur > 0 else 1.0
+            subprocess.run(
+                ["ffmpeg", "-y", "-v", "quiet", "-ss", str(ts),
+                 "-i", str(filepath), "-vframes", "1",
+                 "-vf", "scale=320:-1", "-q:v", "5",
+                 str(thumb_path)],
+                capture_output=True, timeout=15,
+            )
+        await asyncio.to_thread(_gen_thumb)
+
+    if thumb_path.exists():
+        return FileResponse(str(thumb_path), media_type="image/jpeg")
+    return JSONResponse({"error": "thumb failed"}, status_code=500)
 
 
 @router.get("/cuts/{filename}")

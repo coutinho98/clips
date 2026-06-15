@@ -26,6 +26,8 @@ WEB_DIR = BASE_DIR / "web" / "dist"
 
 @asynccontextmanager
 async def lifespan(app):
+    import api.routes_process as rp
+    rp._main_loop = asyncio.get_running_loop()
     task = asyncio.create_task(ws_manager.broadcast_loop())
     yield
     ws_manager.stop()

@@ -17,6 +17,7 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
   })
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState(null)
   const [zoom, setZoom] = useState(100)
   const [showCompare, setShowCompare] = useState(false)
   const [history, setHistory] = useState([])
@@ -68,7 +69,9 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
+    const timeout = setTimeout(() => controller.abort(), 10000)
     setPreviewLoading(true)
+    setPreviewError(null)
     try {
       const res = await fetch(`/api/cut/${encodeURIComponent(cut.cut_id)}/preview`, {
         method: 'POST',
@@ -77,17 +80,26 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
         signal: controller.signal,
       })
       if (!mountedRef.current) return
-      if (res.ok) {
-        const blob = await res.blob()
-        if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current)
-        const url = URL.createObjectURL(blob)
-        prevUrlRef.current = url
-        setPreviewUrl(url)
+      if (!res.ok) {
+        setPreviewError(`Erro ${res.status}`)
+        return
       }
+      const ct = res.headers.get('content-type') || ''
+      if (!ct.includes('image/')) {
+        setPreviewError('Preview indisponível')
+        return
+      }
+      const blob = await res.blob()
+      if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current)
+      const url = URL.createObjectURL(blob)
+      prevUrlRef.current = url
+      setPreviewUrl(url)
     } catch {
-      if (controller.signal.aborted) return
+      if (!controller.signal.aborted) setPreviewError('Falha ao carregar')
+    } finally {
+      clearTimeout(timeout)
+      if (mountedRef.current) setPreviewLoading(false)
     }
-    if (mountedRef.current) setPreviewLoading(false)
   }
 
   function pushHistory(newConfig) {
@@ -190,6 +202,8 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
               <div className="editor-preview-area" style={{ maxHeight: showCompare ? 360 : 480, transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>
                 {previewUrl ? (
                   <img src={previewUrl} alt="Preview" className="editor-preview-img" />
+                ) : previewError ? (
+                  <div className="editor-preview-placeholder">{previewError}</div>
                 ) : (
                   <div className="editor-preview-placeholder">Carregando preview...</div>
                 )}

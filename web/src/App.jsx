@@ -87,6 +87,25 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (!processing) return
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/status')
+        const data = await res.json()
+        if (!data.processing) {
+          setProcessing(false)
+          setProgress(0)
+          setStep('')
+        } else {
+          setProgress(data.progress)
+          setStep(data.step)
+        }
+      } catch {}
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [processing])
+
+  useEffect(() => {
     if (prevProcessingRef.current && !processing && cuts.length > 0) {
       addToast('Processamento concluido! ' + cuts.length + ' cortes gerados.', 'success')
     }
