@@ -83,7 +83,8 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
                   segmentos_legenda=None, hook_text=None,
                   bg_music_path=None, bg_music_volume=0.15,
                   estilo_legenda="neon", zoom_dinamico=False,
-                  fade_transition=0.0, probe_cache=None, output_dir=None):
+                  fade_transition=0.0, probe_cache=None, output_dir=None,
+                  categoria=None):
     duracao = fim_seg - inicio_seg
     if duracao > REELS_MAX_DURACAO:
         fim_seg = inicio_seg + REELS_MAX_DURACAO
@@ -98,6 +99,7 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
             titulo=titulo, estilo=estilo_legenda, crop_vertical=crop_vertical,
             fade_transition=fade_transition, zoom_dinamico=zoom_dinamico,
             output_dir=output_dir, hook_text=hook_text,
+            categoria=categoria,
         )
     nome_arquivo = re.sub(r'[?#%&\\<>|*]', '', titulo.replace(" ", "_").replace("/", "_"))[:50]
     out_dir = output_dir or PASTA_OUTPUT
@@ -124,12 +126,26 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
     if crop_vertical and h_orig <= w_orig:
         crop_w = int(h_orig * 9 / 16)
         if crop_w <= w_orig:
-            face_crop_x = detectar_faces_crop(caminho_video, inicio_seg, fim_seg, crop_w, h_orig)
-            if face_crop_x is not None:
-                crop_x = face_crop_x
+            smart_filter = None
+            try:
+                from modules.smart_framer import gerar_smart_crop_filter
+                smart_filter = gerar_smart_crop_filter(
+                    caminho_video, inicio_seg, fim_seg,
+                    orig_w=w_orig, orig_h=h_orig, crop_w=crop_w,
+                    target_w=RESOLUCAO[0], target_h=RESOLUCAO[1],
+                    categoria=categoria,
+                )
+            except Exception as e:
+                print(f"  [SMART-FRAME] Erro: {e}, usando fallback")
+            if smart_filter:
+                vf_parts.append(smart_filter)
             else:
-                crop_x = (w_orig - crop_w) // 2
-            vf_parts.append(f"crop={crop_w}:{h_orig}:{crop_x}:0")
+                face_crop_x = detectar_faces_crop(caminho_video, inicio_seg, fim_seg, crop_w, h_orig)
+                if face_crop_x is not None:
+                    crop_x = face_crop_x
+                else:
+                    crop_x = (w_orig - crop_w) // 2
+                vf_parts.append(f"crop={crop_w}:{h_orig}:{crop_x}:0")
         vf_parts.append(f"scale={RESOLUCAO[0]}:{RESOLUCAO[1]}")
     elif h_orig > w_orig:
         vf_parts.append(f"scale={RESOLUCAO[0]}:{RESOLUCAO[1]}")
@@ -195,9 +211,9 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
                 "-to", str(fim_seg),
                 "-i", caminho_video,
                 "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-crf", "23",
+                "-c:v", "h264_nvenc",
+                "-preset", "p4",
+                "-cq", "23",
                 "-c:a", "aac",
                 "-b:a", "192k",
                 "-movflags", "+faststart",
@@ -241,9 +257,9 @@ def _build_cmd_bg_music(caminho_video, inicio_seg, fim_seg, bg_music_path,
         cmd.extend(["-vf", video_filter])
 
     cmd.extend([
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
+        "-c:v", "h264_nvenc",
+        "-preset", "p4",
+        "-cq", "23",
         "-c:a", "aac",
         "-b:a", "192k",
         "-shortest",
@@ -270,13 +286,12 @@ def _build_cmd_simple(caminho_video, inicio_seg, fim_seg, video_filter, af_parts
         cmd.extend(["-af", audio_filter])
 
     cmd.extend([
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
+        "-c:v", "h264_nvenc",
+        "-preset", "p4",
+        "-cq", "23",
         "-c:a", "aac",
         "-b:a", "192k",
         "-movflags", "+faststart",
-        "-threads", "4",
         caminho_saida,
     ])
     return cmd
@@ -286,7 +301,8 @@ def extrair_multiplos_cortes(caminho_video, cortes, crop_vertical=True,
                               adicionar_legenda=False, transcricao=None,
                               bg_music_path=None, bg_music_volume=0.15,
                               estilo_legenda="neon", zoom_dinamico=False,
-                              fade_transition=0.0, output_dir=None):
+                              fade_transition=0.0, output_dir=None,
+                              usar_smart_frame=True):
     resultados = []
     _probe_cache = {}
 
@@ -322,6 +338,7 @@ def extrair_multiplos_cortes(caminho_video, cortes, crop_vertical=True,
                 fade_transition=fade_transition,
                 probe_cache=_probe_cache,
                 output_dir=output_dir,
+                categoria=(corte.get("categoria") or corte.get("tipo")) if usar_smart_frame else None,
             )
             if caminho:
                 import json

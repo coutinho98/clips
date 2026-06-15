@@ -297,7 +297,7 @@ def _probe_video(caminho_video):
 def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
                               titulo="corte", estilo="neon", crop_vertical=True,
                               fade_transition=0.0, zoom_dinamico=False, output_dir=None,
-                              hook_text=None):
+                              hook_text=None, categoria=None):
     if fim_seg - inicio_seg > REELS_MAX_DURACAO:
         fim_seg = inicio_seg + REELS_MAX_DURACAO
 
@@ -332,18 +332,25 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
         if orig_h > orig_w:
             vf_parts.append(f"scale={video_w}:{video_h}")
         else:
-            target_ratio = 9 / 16
-            current_ratio = orig_w / orig_h
-            if current_ratio < target_ratio:
-                new_h = int(orig_w / target_ratio)
-                y_center = orig_h // 2
-                y1 = max(0, y_center - new_h // 2)
-                vf_parts.append(f"crop={orig_w}:{new_h}:0:{y1}")
-            else:
-                new_w = int(orig_h * target_ratio)
-                x_center = orig_w // 2
-                x1 = max(0, x_center - new_w // 2)
-                vf_parts.append(f"crop={new_w}:{orig_h}:{x1}:0")
+            crop_w = int(orig_h * 9 / 16)
+            if crop_w <= orig_w:
+                smart_filter = None
+                try:
+                    from modules.smart_framer import gerar_smart_crop_filter
+                    smart_filter = gerar_smart_crop_filter(
+                        caminho_video, inicio_seg, fim_seg,
+                        orig_w=orig_w, orig_h=orig_h, crop_w=crop_w,
+                        target_w=video_w, target_h=video_h,
+                        categoria=categoria,
+                    )
+                except Exception as e:
+                    print(f"  [SMART-FRAME] Erro: {e}, usando fallback centro")
+                if smart_filter:
+                    vf_parts.append(smart_filter)
+                else:
+                    x_center = orig_w // 2
+                    x1 = max(0, x_center - crop_w // 2)
+                    vf_parts.append(f"crop={crop_w}:{orig_h}:{x1}:0")
             vf_parts.append(f"scale={video_w}:{video_h}")
 
     escaped_ass = ass_path.replace("'", "'\\''").replace(":", "\\:")
@@ -368,13 +375,12 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
         "-i", caminho_video,
         "-vf", vf,
         "-af", af,
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
+        "-c:v", "h264_nvenc",
+        "-preset", "p4",
+        "-cq", "23",
         "-c:a", "aac",
         "-b:a", "192k",
         "-movflags", "+faststart",
-        "-threads", "4",
         caminho_saida,
     ]
 

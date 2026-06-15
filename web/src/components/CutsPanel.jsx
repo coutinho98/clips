@@ -5,46 +5,25 @@ import {
   Copy, FolderOpen,
 } from 'lucide-react'
 
+
+
 function CutThumbnail({ src }) {
   const [thumbUrl, setThumbUrl] = useState(null)
-
-  useEffect(() => {
-    const video = document.createElement('video')
-    video.crossOrigin = 'anonymous'
-    video.preload = 'metadata'
-    video.muted = true
-    video.playsInline = true
-    let revoked = false
-
-    video.addEventListener('loadeddata', () => {
-      video.currentTime = Math.min(1, (video.duration || 2) * 0.1)
-    })
-
-    video.addEventListener('seeked', () => {
-      if (revoked) return
-      try {
-        const vw = video.videoWidth || 320
-        const vh = video.videoHeight || 180
-        const scale = Math.min(320 / vw, 320 / vh)
-        const cw = Math.round(vw * scale)
-        const ch = Math.round(vh * scale)
-        const canvas = document.createElement('canvas')
-        canvas.width = cw
-        canvas.height = ch
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(video, 0, 0, cw, ch)
-        setThumbUrl(canvas.toDataURL('image/jpeg', 0.85))
-      } catch {}
-    })
-
-    video.addEventListener('error', () => {})
-    video.src = src
-    return () => { revoked = true }
-  }, [src])
+  const [failed, setFailed] = useState(false)
 
   return (
     <div className="cut-row-thumb">
-      {thumbUrl ? <img src={thumbUrl} alt="" /> : <Film className="cut-row-thumb-placeholder" size={16} />}
+      {!failed ? (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          onError={() => setFailed(true)}
+          onLoad={(e) => setThumbUrl(e.target.src)}
+        />
+      ) : (
+        <Film className="cut-row-thumb-placeholder" size={16} />
+      )}
     </div>
   )
 }
@@ -75,7 +54,7 @@ function CutRow({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onTogg
       onContextMenu={onContextMenu}
     >
       <input type="checkbox" className="cut-row-checkbox" checked={isSelected} onChange={onToggle} />
-      <CutThumbnail src={`/api/cuts/${cut.arquivo}`} />
+      <CutThumbnail src={`/api/cuts/${cut.arquivo}/thumb`} />
       <div className="cut-row-left">
         <div className="cut-row-info">
           <div className="cut-row-title">{cut.titulo}</div>

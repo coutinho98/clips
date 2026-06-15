@@ -49,7 +49,7 @@ def _emit(step, progress, **extra):
     if loop and loop.is_running():
         asyncio.run_coroutine_threadsafe(ws_manager.send(data), loop)
     else:
-        ws_manager._queue.put_nowait(data)
+        print(f"  [WARN] _emit sem event loop: {step} ({progress}%)")
 
 
 class ProgressHook:
