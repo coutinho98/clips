@@ -204,14 +204,13 @@ export default function ConfigPanel({ config, defaults, onUpdate, disabled }) {
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label"><Brain className="form-label-icon" /> Modelo Whisper</label>
+            <label className="form-label"><Brain className="form-label-icon" /> Modelo Transcrição</label>
             <select className="form-select" value={config.whisper_model}
               onChange={(e) => handleChange('whisper_model', e.target.value)} disabled={disabled}>
-              <option value="tiny">Tiny (rapido)</option>
-              <option value="base">Base</option>
-              <option value="small">Small (recomendado)</option>
-              <option value="medium">Medium (lento)</option>
-              <option value="large">Large (mais lento)</option>
+              <option value="parakeet">Parakeet TDT (recomendado)</option>
+              <option value="small">Whisper Small</option>
+              <option value="medium">Whisper Medium (lento)</option>
+              <option value="large">Whisper Large (mais lento)</option>
             </select>
           </div>
           <div className="form-group">

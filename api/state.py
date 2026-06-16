@@ -15,7 +15,7 @@ DEFAULTS = {
     "shadow_color": "#000000",
     "text_margin_bottom": 180,
     "max_cuts": 5,
-    "whisper_model": "small",
+    "whisper_model": "parakeet",
     "detect_method": "ia",
     "crop_vertical": True,
     "bg_music_volume": 0.15,
