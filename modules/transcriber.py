@@ -162,9 +162,12 @@ def transcrever_com_whisper_api(caminho_audio, idioma="pt"):
 
 def transcrever_audio(caminho_audio, metodo="local", modelo="medium", idioma="pt",
                       corrigir_com_ia=False):
-    print(f"\n  [Transcrição] Método: {metodo}")
+    print(f"\n  [Transcrição] Método: {metodo}, Modelo: {modelo}")
 
-    if metodo == "api":
+    if modelo == "parakeet" or metodo == "parakeet":
+        from modules.parakeet_transcriber import transcrever_com_parakeet
+        transcricao = transcrever_com_parakeet(caminho_audio, idioma)
+    elif metodo == "api":
         transcricao = transcrever_com_whisper_api(caminho_audio, idioma)
     elif metodo == "local":
         transcricao = None

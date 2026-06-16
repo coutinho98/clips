@@ -98,19 +98,19 @@ REGRAS_POR_CATEGORIA = {
         "cortar_reacao": True,
         "reaction_delay": 0.4,
         "reaction_hold": 2.0,
-        "transition_speed": 0.4,
+        "transition_speed": 0.18,
     },
     "emocionante": {
         "zoom_base": 1.0,
         "zoom_progressivo": (1.0, 1.35),
         "seguir_speaker": True,
-        "transition_speed": 0.6,
+        "transition_speed": 0.25,
     },
     "confronto": {
         "zoom_base": 0.92,
         "alternar_speakers": True,
         "seguir_speaker": True,
-        "transition_speed": 0.3,
+        "transition_speed": 0.15,
     },
     "revelação": {
         "zoom_base": 1.15,
@@ -118,37 +118,37 @@ REGRAS_POR_CATEGORIA = {
         "cortar_reacao": True,
         "reaction_delay": 0.3,
         "reaction_hold": 1.5,
-        "transition_speed": 0.35,
+        "transition_speed": 0.18,
     },
     "história": {
         "zoom_base": 1.1,
         "zoom_progressivo": (1.1, 1.25),
         "seguir_speaker": True,
-        "transition_speed": 0.5,
+        "transition_speed": 0.22,
     },
     "sério": {
         "zoom_base": 1.2,
         "seguir_speaker": True,
-        "transition_speed": 0.5,
+        "transition_speed": 0.22,
     },
     "eletrizante": {
         "zoom_base": 1.1,
         "cortes_rapidos": True,
         "seguir_speaker": True,
-        "transition_speed": 0.25,
+        "transition_speed": 0.12,
     },
     "polêmico": {
         "zoom_base": 1.1,
         "alternar_speakers": True,
         "seguir_speaker": True,
-        "transition_speed": 0.35,
+        "transition_speed": 0.18,
     },
 }
 
 REGRA_DEFAULT = {
     "zoom_base": 1.1,
     "seguir_speaker": True,
-    "transition_speed": 0.5,
+    "transition_speed": 0.22,
 }
 
 SPEAKER_SWITCH_COOLDOWN = 2.5
@@ -361,24 +361,26 @@ def _rastrear_segmento(caminho_video, inicio_seg, fim_seg, sample_fps=4):
                 device=0, imgsz=384, half=use_half,
             )
 
-            tracks = {}
+            tracks_small = {}
             if results and results[0].boxes is not None and len(results[0].boxes) > 0:
                 for box in results[0].boxes:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    x1 = int(x1 * scale_x)
-                    y1 = int(y1 * scale_y)
-                    x2 = int(x2 * scale_x)
-                    y2 = int(y2 * scale_y)
                     tid = int(box.id[0]) if box.id is not None else 0
-                    tracks[tid] = (x1, y1, x2, y2)
+                    tracks_small[tid] = (x1, y1, x2, y2)
 
-            rostos = _detectar_rostos(gray, tracks, cache=rosto_cache)
-            active_tid, score, all_scores = detector.atualizar(tracks, gray, tempo_local, rostos=rostos)
+            rostos = _detectar_rostos(gray, tracks_small, cache=rosto_cache)
+            active_tid, score, all_scores = detector.atualizar(tracks_small, gray, tempo_local, rostos=rostos)
+
+            tracks_orig = {
+                tid: (int(x1 * scale_x), int(y1 * scale_y),
+                      int(x2 * scale_x), int(y2 * scale_y))
+                for tid, (x1, y1, x2, y2) in tracks_small.items()
+            }
 
             timeline.append({
                 "tempo": tempo_local,
                 "active_speaker": active_tid,
-                "tracks": tracks,
+                "tracks": tracks_orig,
                 "motion_scores": all_scores,
                 "score": score,
                 "occluded": set(detector.occluded),
@@ -480,7 +482,7 @@ def _gerar_keyframes(timeline, orig_w, orig_h, crop_w, regras):
     return keyframes
 
 
-def _reduzir_keyframes(kf_brutos, threshold_x=40, threshold_zoom=0.05, min_gap=0.8):
+def _reduzir_keyframes(kf_brutos, threshold_x=70, threshold_zoom=0.05, min_gap=1.2):
     """
     Reduz keyframes mantendo apenas onde ha mudanca significativa.
     Sempre inclui o primeiro e o ultimo.
