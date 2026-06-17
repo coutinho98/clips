@@ -196,7 +196,9 @@ def _segmentos_para_grupos(segmentos, inicio_global, fim_global,
         t_end = min(seg["fim"], fim_global)
 
         raw_words = []
-        for wd in seg.get("words", []):
+        for wd in (seg.get("words") or []):
+            if not isinstance(wd, dict):
+                continue
             w_start = wd.get("inicio", wd.get("start", 0))
             w_end = wd.get("fim", wd.get("end", 0))
             w_text = wd.get("texto", wd.get("word", "")).strip()
