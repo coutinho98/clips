@@ -2,7 +2,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from config import RESOLUCAO, PASTA_TEMP, PASTA_OUTPUT
+from config import RESOLUCAO, PASTA_TEMP, PASTA_OUTPUT, get_watermark
 
 SAFE_ZONE_TOP_PCT = 0.15
 REELS_MAX_DURACAO = 999
@@ -373,7 +373,19 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
         "-ss", str(inicio_seg),
         "-to", str(fim_seg),
         "-i", caminho_video,
-        "-vf", vf,
+    ]
+
+    wm = get_watermark()
+    if wm:
+        cmd.extend(["-i", wm["path"]])
+        fc = f"[0:v]{vf}[base]"
+        fc += f";[1:v]scale={wm['size']}:-1,format=rgba,colorchannelmixer=aa={wm['opacity']}[wm]"
+        fc += f";[base][wm]overlay={wm['pos']}[vout]"
+        cmd.extend(["-filter_complex", fc, "-map", "[vout]", "-map", "0:a?"])
+    else:
+        cmd.extend(["-vf", vf])
+
+    cmd.extend([
         "-af", af,
         "-c:v", "h264_nvenc",
         "-preset", "p4",
@@ -382,7 +394,7 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
         "-b:a", "192k",
         "-movflags", "+faststart",
         caminho_saida,
-    ]
+    ])
 
     print(f"  Encodando vídeo com legendas...")
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)

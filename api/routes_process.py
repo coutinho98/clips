@@ -177,7 +177,9 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                 momentos_audio = cached_p
                 hook.emit("picos_audio", "Reutilizando análise de áudio em cache...")
         if not momentos_audio:
-            momentos_audio = detectar_momentos_interessantes(caminho_audio)
+            momentos_audio = detectar_momentos_interessantes(
+                caminho_audio, duracao_corte_min=25, duracao_corte_max=45,
+            )
             salvar_cache(job_id, cache_key_picos, momentos_audio)
 
         hook.emit("highlights", "Detectando melhores momentos...")
@@ -187,7 +189,8 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
 
         if detect_method in ("heuristicas", "ambos"):
             cortes_h = detectar_highlights_heuristico(
-                transcricao, momentos_audio, max_cortes=max_cuts
+                transcricao, momentos_audio, max_cortes=max_cuts,
+                duracao_min=25, duracao_max=45,
             )
             cortes.extend(cortes_h)
 
@@ -197,7 +200,7 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                 from config import OPENAI_API_KEY
                 if _usar_ollama() or OPENAI_API_KEY:
                     cortes_ia = detectar_highlights(
-                        transcricao, picos_audio=momentos_audio, max_cortes=max_cuts
+                        transcricao, picos_audio=momentos_audio, max_cortes=max_cuts,
                     )
                     cortes.extend(cortes_ia)
             except Exception as e:
@@ -214,7 +217,7 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
 
         _emit(f"Refinando {len(cortes)} cortes...", 80)
         from modules.cut_refiner import refinar_cortes
-        cortes = refinar_cortes(cortes, transcricao)
+        cortes = refinar_cortes(cortes, transcricao, duracao_min=20, duracao_max=45)
         print(f"\n  {len(cortes)} cortes refinados:")
         for c in cortes:
             d = c.get("fim_seg", 0) - c.get("inicio_seg", 0)

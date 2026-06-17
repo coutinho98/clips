@@ -118,7 +118,9 @@ def processar_live(
         print(f"\n[4/6] [CACHE] {len(momentos_audio)} picos de áudio")
     else:
         print(f"\n[4/6] Analisando áudio para detectar picos...")
-        momentos_audio = detectar_momentos_interessantes(caminho_audio)
+        momentos_audio = detectar_momentos_interessantes(
+            caminho_audio, duracao_corte_min=25, duracao_corte_max=45,
+        )
         if resume:
             salvar_cache(job_id, "picos_audio", {"picos": momentos_audio})
 
@@ -134,6 +136,7 @@ def processar_live(
             print("  Analisando com heurísticas (100% grátis)...")
             cortes_heur = detectar_highlights_heuristico(
                 transcricao, momentos_audio, max_cortes=max_cortes,
+                duracao_min=25, duracao_max=45,
             )
             cortes.extend(cortes_heur)
 

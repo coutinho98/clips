@@ -26,12 +26,28 @@ WHISPER_INITIAL_PROMPT = os.getenv(
     "pá, mano, tchê, tiu, guri, maninho."
 )
 LIVE_CLIPPER_MAX_CORTES = int(os.getenv("LIVE_CLIPPER_MAX_CORTES", "5"))
-LIVE_CLIPPER_DURACAO_MIN = int(os.getenv("LIVE_CLIPPER_DURACAO_MIN", "30"))
-LIVE_CLIPPER_DURACAO_MAX = int(os.getenv("LIVE_CLIPPER_DURACAO_MAX", "60"))
+LIVE_CLIPPER_DURACAO_MIN = int(os.getenv("LIVE_CLIPPER_DURACAO_MIN", "25"))
+LIVE_CLIPPER_DURACAO_MAX = int(os.getenv("LIVE_CLIPPER_DURACAO_MAX", "45"))
 LIVE_CLIPPER_CROP_VERTICAL = os.getenv("LIVE_CLIPPER_CROP_VERTICAL", "true").lower() == "true"
 LIVE_CLIPPER_LEGENDAS = os.getenv("LIVE_CLIPPER_LEGENDAS", "true").lower() == "true"
 LIVE_CLIPPER_ESTILO_LEGENDAS = os.getenv("LIVE_CLIPPER_ESTILO_LEGENDAS", "neon")
 LIVE_CLIPPER_DETECTAR_POR = os.getenv("LIVE_CLIPPER_DETECTAR_POR", "ia")
 
+WATERMARK_LOGO = os.getenv("WATERMARK_LOGO", os.path.join(os.path.dirname(__file__), "logo.png"))
+WATERMARK_SIZE = int(os.getenv("WATERMARK_SIZE", "150"))
+WATERMARK_OPACITY = float(os.getenv("WATERMARK_OPACITY", "0.8"))
+WATERMARK_POS = os.getenv("WATERMARK_POS", "W-w-30:H-h-220")
+
 os.makedirs(PASTA_TEMP, exist_ok=True)
 os.makedirs(PASTA_OUTPUT, exist_ok=True)
+
+
+def get_watermark():
+    if WATERMARK_LOGO and os.path.exists(WATERMARK_LOGO):
+        return {
+            "path": WATERMARK_LOGO,
+            "size": WATERMARK_SIZE,
+            "opacity": WATERMARK_OPACITY,
+            "pos": WATERMARK_POS,
+        }
+    return None

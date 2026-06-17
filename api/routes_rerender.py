@@ -76,6 +76,40 @@ async def preview_subtitle(cut_id: str, body: dict):
     return StreamingResponse(buf, media_type="image/jpeg")
 
 
+_transc_cache = {}
+
+
+def _transcrever_corte_local(cut_path):
+    import os
+    key = (str(cut_path), int(os.path.getmtime(cut_path)))
+    if key in _transc_cache:
+        return _transc_cache[key]
+
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(cut_path)],
+            capture_output=True, text=True, timeout=10,
+        )
+        duracao = float(probe.stdout.strip())
+    except Exception:
+        return None, 0
+
+    try:
+        from modules.parakeet_transcriber import transcrever_com_parakeet
+        print(f"  [RERENDER] Transcrevendo corte renomeado ({duracao:.0f}s)...")
+        result = transcrever_com_parakeet(str(cut_path))
+        segmentos = result.get("segmentos", [])
+        _transc_cache[key] = segmentos
+        if len(_transc_cache) > 20:
+            oldest = next(iter(_transc_cache))
+            del _transc_cache[oldest]
+        return segmentos, duracao
+    except Exception as e:
+        print(f"  [RERENDER] Parakeet falhou: {e}")
+        return None, duracao
+
+
 def _get_cut_data(cut_id):
     meta_name = cut_id.replace("corte_", "") + "_meta.json"
     meta_path = PASTA_TEMP / meta_name
@@ -91,58 +125,19 @@ def _get_cut_data(cut_id):
     cut_filename = cut_id if cut_id.endswith(".mp4") else f"{cut_id}.mp4"
     cut_titulo = cut_filename.replace("corte_", "").replace(".mp4", "")
 
-    for rpt_path in sorted(PASTA_OUTPUT.glob("relatorio_cortes_*.json"), reverse=True):
-        try:
-            with open(rpt_path, "r", encoding="utf-8") as f:
-                rpt = json.load(f)
-            video_origem = rpt.get("video_origem", "")
-            if not video_origem or not Path(video_origem).exists():
-                continue
-            for c in rpt.get("cortes", []):
-                if c.get("status") != "ok":
-                    continue
-                titulo = c.get("titulo", "")
-                if titulo in cut_titulo or cut_titulo in titulo:
-                    transc_path = PASTA_TEMP / "transcricao.json"
-                    if not transc_path.exists():
-                        continue
-                    with open(transc_path, "r", encoding="utf-8") as f:
-                        transc = json.load(f)
-                    inicio = c.get("inicio", 0)
-                    fim = c.get("fim", 0)
-                    segs = [
-                        seg for seg in transc.get("segmentos", [])
-                        if seg["fim"] >= inicio and seg["inicio"] <= fim
-                    ]
-                    return {
-                        "video_origem": video_origem,
-                        "inicio": inicio,
-                        "fim": fim,
-                        "titulo": titulo,
-                        "segmentos": segs,
-                    }
-        except Exception:
-            continue
-
-    transc_path = PASTA_TEMP / "transcricao.json"
-    if not transc_path.exists():
-        return None
-
     cut_path = PASTA_OUTPUT / cut_filename
+    if not cut_path.exists():
+        for d in PASTA_OUTPUT.iterdir():
+            if d.is_dir():
+                candidate = d / cut_filename
+                if candidate.exists():
+                    cut_path = candidate
+                    break
     if not cut_path.exists():
         return None
 
-    with open(transc_path, "r", encoding="utf-8") as f:
-        transc = json.load(f)
-
-    try:
-        probe = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=noprint_wrappers=1:nokey=1", str(cut_path)],
-            capture_output=True, text=True, timeout=10,
-        )
-        duracao = float(probe.stdout.strip())
-    except Exception:
+    segmentos, duracao = _transcrever_corte_local(cut_path)
+    if not segmentos:
         return None
 
     return {
@@ -150,8 +145,8 @@ def _get_cut_data(cut_id):
         "inicio": 0,
         "fim": duracao,
         "titulo": cut_id,
-        "segmentos": transc.get("segmentos", []),
-        "fallback": True,
+        "segmentos": segmentos,
+        "fallback": False,
     }
 
 
@@ -215,8 +210,8 @@ def _rerender_thread(cut_id, render_config, meta):
             _emit("Aplicando fade/zoom...", 10)
             from modules.zoom_tracker import aplicar_fade
             fade_dur = render_config.get("fade_transition", 0.3)
-            nome_saida = re.sub(r'[?#%&\\<>|*]', '', titulo.replace(" ", "_").replace("/", "_"))[:50] + "_v3"
-            caminho_saida = str(PASTA_OUTPUT / f"corte_{nome_saida}.mp4")
+
+            caminho_saida = str(PASTA_OUTPUT / f"_tmp_{cut_id}.mp4")
 
             if fade_dur > 0:
                 ok = aplicar_fade(video_origem, caminho_saida, duracao=fade_dur)
@@ -226,12 +221,18 @@ def _rerender_thread(cut_id, render_config, meta):
                 ok = True
 
             if ok and os.path.exists(caminho_saida):
-                tamanho_mb = round(os.path.getsize(caminho_saida) / (1024 * 1024), 1)
+                import shutil
+                shutil.move(caminho_saida, video_origem)
+                thumb_dir = PASTA_TEMP / "thumbs"
+                if thumb_dir.exists():
+                    for thumb in thumb_dir.glob(f"{cut_id}*.jpg"):
+                        thumb.unlink()
+                tamanho_mb = round(os.path.getsize(video_origem) / (1024 * 1024), 1)
                 _emit("Pronto!", 100, rerendered={
                     "cut_id": cut_id,
                     "titulo": titulo,
-                    "arquivo": os.path.basename(caminho_saida),
-                    "caminho": caminho_saida,
+                    "arquivo": os.path.basename(video_origem),
+                    "caminho": video_origem,
                     "tamanho_mb": tamanho_mb,
                 })
             else:
@@ -244,19 +245,41 @@ def _rerender_thread(cut_id, render_config, meta):
             from modules.subtitle_generator import gerar_video_com_legendas
             estilo = render_config.get("subtitle_style", "karaoke")
 
+            cut_filename = cut_id if cut_id.endswith(".mp4") else f"{cut_id}.mp4"
+            cut_orig_path = None
+            for candidate in [PASTA_OUTPUT / cut_filename, *[d / cut_filename for d in PASTA_OUTPUT.iterdir() if d.is_dir()]]:
+                if candidate.exists():
+                    cut_orig_path = str(candidate)
+                    break
+
+            output_dir = str(Path(cut_orig_path).parent) if cut_orig_path else str(PASTA_OUTPUT)
+
             caminho_saida = gerar_video_com_legendas(
                 video_origem,
                 meta["segmentos"],
                 inicio,
                 fim,
-                titulo=f"{titulo}_v2",
+                titulo=cut_id,
                 estilo=estilo,
                 crop_vertical=render_config.get("crop_vertical", True),
                 fade_transition=render_config.get("fade_transition", 0.3),
                 categoria=meta.get("categoria"),
+                output_dir=output_dir,
             )
 
+            if caminho_saida and cut_orig_path and caminho_saida != cut_orig_path:
+                import shutil
+                shutil.move(caminho_saida, cut_orig_path)
+                caminho_saida = cut_orig_path
+
             if caminho_saida and os.path.exists(caminho_saida):
+                thumb_dir = PASTA_TEMP / "thumbs"
+                if thumb_dir.exists():
+                    for thumb in thumb_dir.glob(f"{cut_id}*.jpg"):
+                        thumb.unlink()
+                    corte_id = f"corte_{cut_id}"
+                    for thumb in thumb_dir.glob(f"{corte_id}*.jpg"):
+                        thumb.unlink()
                 tamanho_mb = round(os.path.getsize(caminho_saida) / (1024 * 1024), 1)
                 _emit("Pronto!", 100, rerendered={
                     "cut_id": cut_id,
