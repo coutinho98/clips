@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Play, Square, Pencil, Download, Scissors,
   Clock, HardDrive, Film, Search, ArrowUpDown,
-  Copy, FolderOpen,
+  Copy, FolderOpen, LayoutGrid, List,
 } from 'lucide-react'
 
 
@@ -76,6 +76,36 @@ function CutRow({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onTogg
   )
 }
 
+function CutCard({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onToggle, onContextMenu }) {
+  return (
+    <div
+      className={`cut-card fade-in ${isPlaying ? 'playing' : ''} ${isSelected ? 'selected' : ''}`}
+      onContextMenu={onContextMenu}
+    >
+      <div className="cut-card-thumb" onClick={onPlay}>
+        <CutThumbnail src={`/api/cuts/${cut.arquivo}/thumb`} />
+        <div className="cut-card-overlay">
+          <button className="cut-card-play" title="Preview">
+            {isPlaying ? <Square size={18} /> : <Play size={18} />}
+          </button>
+        </div>
+        {cut.duracao && (
+          <span className="cut-card-duration">{Math.round(cut.duracao)}s</span>
+        )}
+        {cut._new && <span className="cut-card-new">NOVO</span>}
+      </div>
+      <div className="cut-card-body">
+        <div className="cut-card-title" title={cut.titulo}>{cut.titulo}</div>
+        <div className="cut-card-actions">
+          <input type="checkbox" className="cut-row-checkbox" checked={isSelected} onChange={onToggle} />
+          <button className="btn-icon cut-card-btn" onClick={onEdit} title="Editar"><Pencil size={13} /></button>
+          <button className="btn-icon cut-card-btn" onClick={onDownload} title="Download"><Download size={13} /></button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function CutsPanel({ cuts, onEdit, onGoImport }) {
   const [playingId, setPlayingId] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -86,6 +116,7 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
   const [contextCut, setContextCut] = useState(null)
   const [selectedFolder, setSelectedFolder] = useState(null)
   const [folderSearch, setFolderSearch] = useState('')
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('dcb-view') || 'list')
 
   useEffect(() => {
     function handleClick() { setContextMenu(null) }
@@ -179,11 +210,21 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
             <span className="panel-title">Cortes Gerados</span>
           </div>
         </div>
-        <div className="empty-state">
-          <Film className="empty-state-icon" />
+        <div className="empty-state-rich">
+          <svg className="empty-state-svg" width="120" height="90" viewBox="0 0 120 90" fill="none">
+            <rect x="15" y="15" width="90" height="56" rx="6" stroke="var(--border-light)" strokeWidth="1.5" fill="var(--bg-elevated)" />
+            <path d="M15 30 L105 30" stroke="var(--border)" strokeWidth="1" />
+            <circle cx="20" cy="22" r="1.5" fill="var(--danger)" />
+            <circle cx="25" cy="22" r="1.5" fill="var(--warning)" />
+            <circle cx="30" cy="22" r="1.5" fill="var(--success)" />
+            <path d="M45 45 L45 55 M40 50 L50 50" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" className="empty-state-pulse" />
+            <rect x="60" y="42" width="30" height="3" rx="1.5" fill="var(--border-light)" />
+            <rect x="60" y="50" width="20" height="3" rx="1.5" fill="var(--border)" />
+            <path d="M55 71 L55 78 M60 71 L60 78 M65 71 L65 78" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
           <div className="empty-state-title">Nenhum corte gerado</div>
-          <div className="empty-state-text">Processe um video para comecar</div>
-          <button className="empty-state-action" onClick={onGoImport}>
+          <div className="empty-state-text">Importe e processe um video para gerar cortes automaticamente com IA</div>
+          <button className="btn btn-primary empty-state-action" onClick={onGoImport}>
             <Film size={14} /> Importar Video
           </button>
         </div>
@@ -237,6 +278,18 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
             <button className={`cuts-sort-btn ${sortBy === 'titulo' ? 'active' : ''}`} onClick={() => handleSort('titulo')}>
               <ArrowUpDown size={10} /> Titulo
             </button>
+            <div className="cuts-view-toggle">
+              <button className={`cuts-view-btn ${viewMode === 'list' ? 'active' : ''}`}
+                onClick={() => { setViewMode('list'); localStorage.setItem('dcb-view', 'list') }}
+                title="Lista">
+                <List size={14} />
+              </button>
+              <button className={`cuts-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                onClick={() => { setViewMode('grid'); localStorage.setItem('dcb-view', 'grid') }}
+                title="Grid">
+                <LayoutGrid size={14} />
+              </button>
+            </div>
           </div>
 
           {selectedIds.size > 0 && (
@@ -251,8 +304,28 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
         <div className="cuts-main-body">
           {displayCuts.length === 0 ? (
             <div className="cuts-main-empty">
-              <Film size={28} style={{ opacity: 0.2, marginBottom: 8 }} />
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style={{ marginBottom: 8 }}>
+                <circle cx="20" cy="20" r="14" stroke="var(--border-light)" strokeWidth="2" />
+                <path d="M30 30 L40 40" stroke="var(--border-light)" strokeWidth="2" strokeLinecap="round" />
+                <path d="M15 20 L25 20 M20 15 L20 25" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
               <span>Nenhum corte encontrado</span>
+            </div>
+          ) : viewMode === 'grid' ? (
+            <div className="cuts-grid">
+              {displayCuts.map((cut) => (
+                <CutCard
+                  key={cut.arquivo}
+                  cut={cut}
+                  isPlaying={playingId === cut.arquivo}
+                  isSelected={selectedIds.has(cut.arquivo)}
+                  onPlay={() => handlePlay(cut)}
+                  onEdit={() => onEdit(cut)}
+                  onDownload={() => handleDownload(cut)}
+                  onToggle={() => toggleSelect(cut.arquivo)}
+                  onContextMenu={(e) => handleContextMenu(e, cut)}
+                />
+              ))}
             </div>
           ) : (
             <div className="cuts-list">
