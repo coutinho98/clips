@@ -23,10 +23,11 @@ def refinar_cortes(cortes, transcricao, duracao_min=20, duracao_max=90):
         duracao = fim - inicio
         if duracao < duracao_min:
             inicio, fim = _expandir_corte(inicio, fim, segmentos, duracao_min)
-            rc["inicio_seg"] = inicio
-            rc["fim_seg"] = fim
-            rc["inicio_seg"] = inicio
-            rc["fim_seg"] = fim
+        elif duracao > duracao_max:
+            inicio, fim = _reduzir_corte(inicio, fim, segmentos, duracao_max)
+
+        rc["inicio_seg"] = inicio
+        rc["fim_seg"] = fim
 
         rc["texto"] = _texto_no_intervalo(segmentos, inicio, fim)
         rc["duracao"] = rc["fim_seg"] - rc["inicio_seg"]
@@ -127,6 +128,44 @@ def _expandir_corte(inicio, fim, segmentos, duracao_min):
             break
 
     return inicio, fim
+
+
+def _reduzir_corte(inicio, fim, segmentos, duracao_max):
+    segs_no_corte = [s for s in segmentos if s["fim"] >= inicio and s["inicio"] <= fim]
+    if not segs_no_corte:
+        centro = (inicio + fim) / 2.0
+        return centro - duracao_max / 2.0, centro + duracao_max / 2.0
+
+    segs_no_corte.sort(key=lambda s: s["inicio"])
+
+    centro = (inicio + fim) / 2.0
+    novo_inicio = centro - duracao_max / 2.0
+    novo_fim = centro + duracao_max / 2.0
+
+    for s in segs_no_corte:
+        if s["inicio"] <= novo_inicio <= s["fim"]:
+            novo_inicio = s["inicio"]
+            break
+        if s["fim"] <= novo_inicio:
+            continue
+        if s["inicio"] > novo_inicio:
+            novo_inicio = s["inicio"]
+            break
+
+    for s in reversed(segs_no_corte):
+        if s["inicio"] <= novo_fim <= s["fim"]:
+            novo_fim = s["fim"]
+            break
+        if s["inicio"] >= novo_fim:
+            continue
+        if s["fim"] < novo_fim:
+            novo_fim = s["fim"]
+            break
+
+    if novo_fim - novo_inicio > duracao_max + 5:
+        novo_fim = novo_inicio + duracao_max
+
+    return max(inicio, novo_inicio), min(fim, novo_fim)
 
 
 def _remover_sobreposicao(cortes, distancia_min=15):

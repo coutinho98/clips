@@ -2,7 +2,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from config import RESOLUCAO, PASTA_TEMP, PASTA_OUTPUT
+from config import RESOLUCAO, PASTA_TEMP, PASTA_OUTPUT, get_watermark
 
 SAFE_ZONE_TOP_PCT = 0.15
 REELS_MAX_DURACAO = 999
@@ -167,39 +167,109 @@ def _add_hook_to_ass(ass_content, hook_text, duracao_corte):
     return ass_content[:insert_pos] + dialogue + ass_content[insert_pos:]
 
 
-def _gerar_ass_karaoke(segmentos, inicio_global, fim_global, video_w, video_h):
-    ass = _build_ass_header(video_w, video_h)
+_PALAVRAS_DESCARTAVEIS = {
+    "é", "hmm", "mm", "ah", "eh", "uh", "oh", "hm", "rr", "h", "eh",
+    "né", "tá", "ta", " tô", "tipo", "assim", "cara", "velho",
+}
 
-    filtrados = []
+
+def _palavra_valida(word):
+    w = word.rstrip('.,;:!?').lower().strip()
+    if not w:
+        return False
+    if len(w) <= 1:
+        return False
+    if w in _PALAVRAS_DESCARTAVEIS:
+        return False
+    return True
+
+
+def _segmentos_para_grupos(segmentos, inicio_global, fim_global,
+                           max_palavras=5, max_duracao=1.8):
+    grupos = []
+
     for seg in segmentos:
         if seg["fim"] < inicio_global or seg["inicio"] > fim_global:
             continue
-        texto = seg["texto"].strip()
-        if not texto:
-            continue
-        texto = _limpar_texto_para_legenda(texto)
-        if not texto:
-            continue
-        texto = _quebrar_texto_legenda(texto)[0]
+
         t_start = max(seg["inicio"], inicio_global)
         t_end = min(seg["fim"], fim_global)
-        filtrados.append({"t_start": t_start, "t_end": t_end, "texto": texto, "words": seg.get("words", []), "seg_orig": seg})
 
-    filtrados.sort(key=lambda s: s["t_start"])
+        raw_words = []
+        for wd in (seg.get("words") or []):
+            if not isinstance(wd, dict):
+                continue
+            w_start = wd.get("inicio", wd.get("start", 0))
+            w_end = wd.get("fim", wd.get("end", 0))
+            w_text = wd.get("texto", wd.get("word", "")).strip()
+            if w_text and w_end > t_start and w_start < t_end:
+                raw_words.append((max(w_start, t_start), min(w_end, t_end), w_text))
+
+        if not raw_words:
+            texto = _limpar_texto_para_legenda(seg["texto"].strip())
+            if texto:
+                grupos.append({
+                    "t_start": t_start, "t_end": t_end,
+                    "texto": _quebrar_texto_legenda(texto)[0],
+                    "words": [],
+                })
+            continue
+
+        current = []
+        g_start = None
+
+        for ws, we, wt in raw_words:
+            if not _palavra_valida(wt):
+                continue
+            if g_start is None:
+                g_start = ws
+            current.append((ws, we, wt))
+
+            should_break = (
+                len(current) >= max_palavras
+                or (we - g_start) >= max_duracao
+            )
+            if should_break:
+                grupos.append(_make_grupo(current))
+                current = []
+                g_start = None
+
+        if current:
+            grupos.append(_make_grupo(current))
+
+    grupos.sort(key=lambda g: g["t_start"])
+    return grupos
+
+
+def _make_grupo(words):
+    texto = " ".join(w[2] for w in words)
+    texto = re.sub(r'\s{2,}', ' ', texto).strip()
+    return {
+        "t_start": words[0][0],
+        "t_end": words[-1][1],
+        "texto": texto,
+        "words": words,
+    }
+
+
+def _gerar_ass_karaoke(segmentos, inicio_global, fim_global, video_w, video_h):
+    ass = _build_ass_header(video_w, video_h)
+    grupos = _segmentos_para_grupos(segmentos, inicio_global, fim_global)
 
     prev_end = inicio_global
-    for item in filtrados:
-        t_start = max(item["t_start"], prev_end)
-        t_end = item["t_end"]
+    for grupo in grupos:
+        t_start = max(grupo["t_start"], prev_end)
+        t_end = grupo["t_end"]
         if t_start >= t_end:
             continue
 
-        escaped = _escape_ass(item["texto"])
+        texto = _quebrar_texto_legenda(grupo["texto"])[0]
+        escaped = _escape_ass(texto)
         ass += f"Dialogue: 0,{_format_ass_time(t_start - inicio_global)},{_format_ass_time(t_end - inicio_global)},Base,,0,0,0,,{escaped}\n"
 
-        words = _get_word_timestamps(item["seg_orig"], inicio_global, t_start, t_end)
+        words = grupo["words"]
         if not words:
-            palavras = item["texto"].split()
+            palavras = texto.split()
             dur_total = t_end - t_start
             dur_each = dur_total / max(len(palavras), 1)
             words = []
@@ -236,32 +306,17 @@ def _gerar_ass_simples(segmentos, inicio_global, fim_global, video_w, video_h, e
     ass = _build_ass_header(video_w, video_h)
     style_map = {"neon": "Neon", "box": "Box", "sombra": "Sombra"}
     style_name = style_map.get(estilo, "Sombra")
-
-    filtrados = []
-    for seg in segmentos:
-        if seg["fim"] < inicio_global or seg["inicio"] > fim_global:
-            continue
-        texto = seg["texto"].strip()
-        if not texto:
-            continue
-        texto = _limpar_texto_para_legenda(texto)
-        if not texto:
-            continue
-        texto = _quebrar_texto_legenda(texto)[0]
-        t_start = max(seg["inicio"], inicio_global)
-        t_end = min(seg["fim"], fim_global)
-        filtrados.append({"t_start": t_start, "t_end": t_end, "texto": texto})
-
-    filtrados.sort(key=lambda s: s["t_start"])
+    grupos = _segmentos_para_grupos(segmentos, inicio_global, fim_global)
 
     prev_end = inicio_global
-    for item in filtrados:
-        t_start = max(item["t_start"], prev_end)
-        t_end = item["t_end"]
+    for grupo in grupos:
+        t_start = max(grupo["t_start"], prev_end)
+        t_end = grupo["t_end"]
         if t_start >= t_end:
             continue
 
-        escaped = _escape_ass(item["texto"])
+        texto = _quebrar_texto_legenda(grupo["texto"])[0]
+        escaped = _escape_ass(texto)
         ass += f"Dialogue: 0,{_format_ass_time(t_start - inicio_global)},{_format_ass_time(t_end - inicio_global)},{style_name},,0,0,0,,{escaped}\n"
 
         prev_end = t_end
@@ -373,7 +428,19 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
         "-ss", str(inicio_seg),
         "-to", str(fim_seg),
         "-i", caminho_video,
-        "-vf", vf,
+    ]
+
+    wm = get_watermark()
+    if wm:
+        cmd.extend(["-i", wm["path"]])
+        fc = f"[0:v]{vf}[base]"
+        fc += f";[1:v]scale={wm['size']}:-1,format=rgba,colorchannelmixer=aa={wm['opacity']}[wm]"
+        fc += f";[base][wm]overlay={wm['pos']}[vout]"
+        cmd.extend(["-filter_complex", fc, "-map", "[vout]", "-map", "0:a?"])
+    else:
+        cmd.extend(["-vf", vf])
+
+    cmd.extend([
         "-af", af,
         "-c:v", "h264_nvenc",
         "-preset", "p4",
@@ -382,7 +449,7 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
         "-b:a", "192k",
         "-movflags", "+faststart",
         caminho_saida,
-    ]
+    ])
 
     print(f"  Encodando vídeo com legendas...")
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)

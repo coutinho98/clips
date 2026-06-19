@@ -10,7 +10,8 @@ def extrair_audio_do_video(caminho_video, pasta_saida=None):
         pasta_saida = PASTA_TEMP
 
     os.makedirs(pasta_saida, exist_ok=True)
-    caminho_audio = os.path.join(pasta_saida, "audio_extraido.wav")
+    video_stem = os.path.splitext(os.path.basename(caminho_video))[0]
+    caminho_audio = os.path.join(pasta_saida, f"audio_{video_stem}.wav")
 
     print(f"  Extraindo áudio do vídeo (via ffmpeg)...")
 

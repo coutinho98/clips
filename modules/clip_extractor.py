@@ -2,9 +2,21 @@ import os
 import re
 import subprocess
 import tempfile
-from config import RESOLUCAO, PASTA_OUTPUT, PASTA_TEMP
+from config import RESOLUCAO, PASTA_OUTPUT, PASTA_TEMP, get_watermark
 
 REELS_MAX_DURACAO = 999
+
+
+def _watermark_overlay_filter(video_input="0:v", logo_input=None):
+    wm = get_watermark()
+    if not wm:
+        return None
+    li = logo_input or "1:v"
+    parts = [
+        f"[{li}]scale={wm['size']}:-1,format=rgba,colorchannelmixer=aa={wm['opacity']}[wm]",
+        f"[{video_input}][wm]overlay={wm['pos']}[vout]",
+    ]
+    return ";".join(parts), "[vout]"
 
 
 def detectar_faces_crop(caminho_video, inicio_seg, fim_seg, target_w, target_h):
@@ -210,6 +222,14 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
                 "-ss", str(inicio_seg),
                 "-to", str(fim_seg),
                 "-i", caminho_video,
+            ]
+            wm = get_watermark()
+            if wm:
+                cmd_simple.extend(["-i", wm["path"]])
+                fc = f"[1:v]scale={wm['size']}:-1,format=rgba,colorchannelmixer=aa={wm['opacity']}[wm]"
+                fc += f";[0:v][wm]overlay={wm['pos']}[vout]"
+                cmd_simple.extend(["-filter_complex", fc, "-map", "[vout]", "-map", "0:a?"])
+            cmd_simple.extend([
                 "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
                 "-c:v", "h264_nvenc",
                 "-preset", "p4",
@@ -219,7 +239,7 @@ def extrair_corte(caminho_video, inicio_seg, fim_seg, titulo="corte",
                 "-movflags", "+faststart",
                 "-threads", "4",
                 caminho_saida,
-            ]
+            ])
             subprocess.run(cmd_simple, capture_output=True, text=True, timeout=300)
     except subprocess.TimeoutExpired:
         print(f"  [ERRO] Timeout ao processar corte")
@@ -248,13 +268,25 @@ def _build_cmd_bg_music(caminho_video, inicio_seg, fim_seg, bg_music_path,
         "-to", str(fim_seg),
         "-i", caminho_video,
         "-i", bg_music_path,
-        "-filter_complex", audio_filter,
-        "-map", "0:v",
-        "-map", "[aout]",
     ]
 
-    if video_filter:
-        cmd.extend(["-vf", video_filter])
+    wm = get_watermark()
+    if wm:
+        cmd.extend(["-i", wm["path"]])
+        logo_idx = "2:v"
+        if video_filter:
+            vf = f"[0:v]{video_filter}[base]"
+        else:
+            vf = "[0:v]copy[base]"
+        vf += f";[{logo_idx}]scale={wm['size']}:-1,format=rgba,colorchannelmixer=aa={wm['opacity']}[wm]"
+        vf += f";[base][wm]overlay={wm['pos']}[vout]"
+        cmd.extend(["-filter_complex", vf + ";" + audio_filter])
+        cmd.extend(["-map", "[vout]", "-map", "[aout]"])
+    else:
+        cmd.extend(["-filter_complex", audio_filter])
+        cmd.extend(["-map", "0:v", "-map", "[aout]"])
+        if video_filter:
+            cmd.extend(["-vf", video_filter])
 
     cmd.extend([
         "-c:v", "h264_nvenc",
@@ -272,6 +304,7 @@ def _build_cmd_bg_music(caminho_video, inicio_seg, fim_seg, bg_music_path,
 
 def _build_cmd_simple(caminho_video, inicio_seg, fim_seg, video_filter, af_parts, caminho_saida):
     audio_filter = ",".join(af_parts)
+    wm = get_watermark()
 
     cmd = [
         "ffmpeg", "-y",
@@ -280,8 +313,21 @@ def _build_cmd_simple(caminho_video, inicio_seg, fim_seg, video_filter, af_parts
         "-i", caminho_video,
     ]
 
-    if video_filter:
-        cmd.extend(["-vf", video_filter])
+    if wm:
+        cmd.extend(["-i", wm["path"]])
+        li = "1:v"
+        if video_filter:
+            fc = f"[0:v]{video_filter}[base]"
+        else:
+            fc = "[0:v]copy[base]"
+        fc += f";[{li}]scale={wm['size']}:-1,format=rgba,colorchannelmixer=aa={wm['opacity']}[wm]"
+        fc += f";[base][wm]overlay={wm['pos']}[vout]"
+        cmd.extend(["-filter_complex", fc])
+        cmd.extend(["-map", "[vout]", "-map", "0:a?"])
+    else:
+        if video_filter:
+            cmd.extend(["-vf", video_filter])
+
     if audio_filter:
         cmd.extend(["-af", audio_filter])
 

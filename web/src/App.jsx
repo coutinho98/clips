@@ -2,11 +2,12 @@ import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import ConfigPanel from './components/ConfigPanel'
 import ProcessingPanel from './components/ProcessingPanel'
 import CutsPanel from './components/CutsPanel'
+import CommandPalette from './components/CommandPalette'
 const VideoEditor = lazy(() => import('./components/VideoEditor'))
 import {
   Zap, Loader2, Scissors, Tv, PanelLeftClose, PanelLeftOpen,
-  Film, ScissorsIcon, MonitorPlay, Download, ChevronDown,
-  RotateCcw, Check, AlertCircle, Info,
+  Film, MonitorPlay, Download, ChevronDown,
+  RotateCcw, Check, AlertCircle, Info, Command,
 } from 'lucide-react'
 import './App.css'
 
@@ -40,13 +41,28 @@ function Toast({ toast, onRemove }) {
   )
 }
 
-function getPipelineState(step) {
-  if (!step) return PIPELINE_STEPS.map(s => ({ ...s, status: 'pending' }))
-  const lower = step.toLowerCase()
-  return PIPELINE_STEPS.map(s => {
-    const isActive = lower.includes(s.key) || (s.key === 'render' && lower.includes('render'))
-    return { ...s, status: isActive ? 'active' : 'pending' }
-  })
+function getPipelineState(step, progress) {
+  const steps = PIPELINE_STEPS.map(s => ({ ...s, status: 'pending' }))
+  if (!step && !progress) return steps
+  if (progress >= 100) return steps.map(s => ({ ...s, status: 'done' }))
+
+  const lower = (step || '').toLowerCase()
+  const stepOrder = ['download', 'transcribe', 'detect', 'cut', 'render']
+
+  let activeIdx = -1
+  if (lower.includes('baixando') || lower.includes('download') || lower.includes('enviando')) activeIdx = 0
+  else if (lower.includes('transcri') || lower.includes('whisper') || lower.includes('parakeet')) activeIdx = 1
+  else if (lower.includes('detect') || lower.includes('highlight') || lower.includes('ia ')) activeIdx = 2
+  else if (lower.includes('cort') || lower.includes('extraindo') || lower.includes('refin')) activeIdx = 3
+  else if (lower.includes('render') || lower.includes('legenda') || lower.includes('gerando') || lower.includes('aplicando')) activeIdx = 4
+  else if (lower.includes('iniciando')) activeIdx = 0
+
+  if (activeIdx >= 0) {
+    for (let i = 0; i < activeIdx; i++) steps[i].status = 'done'
+    steps[activeIdx].status = 'active'
+  }
+
+  return steps
 }
 
 export default function App() {
@@ -64,7 +80,8 @@ export default function App() {
   const [activeMainTab, setActiveMainTab] = useState('import')
   const [toasts, setToasts] = useState([])
   const [menuOpen, setMenuOpen] = useState(null)
-  const [workspace, setWorkspace] = useState('edit')
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [showCommand, setShowCommand] = useState(false)
   const wsRef = useRef(null)
   const resizeRef = useRef(null)
   const toastsIdRef = useRef(0)
@@ -122,11 +139,27 @@ export default function App() {
 
   useEffect(() => {
     function handleKeyDown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setShowCommand(v => !v)
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault()
+        setShowShortcuts(v => !v)
+        return
+      }
+      if (e.key === 'Escape') {
+        setShowShortcuts(false)
+        setShowCommand(false)
+        return
+      }
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return
       if (e.key === '1') setActiveMainTab('import')
       if (e.key === '2') setActiveMainTab('cuts')
       if (e.key === '3' && editingCut) setActiveMainTab('editor')
       if (e.key === 'b' || e.key === 'B') setSidebarVisible(v => !v)
+      if (e.key === '?') setShowShortcuts(true)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -307,7 +340,7 @@ export default function App() {
     addToast('Processamento cancelado', 'info')
   }, [addToast])
 
-  const pipeline = getPipelineState(step)
+  const pipeline = getPipelineState(step, progress)
 
   return (
     <div className="app">
@@ -350,6 +383,9 @@ export default function App() {
                   <div className="menu-dropdown-item" onClick={() => { setSidebarVisible(v => !v); setMenuOpen(null) }}>
                     Toggle Sidebar <span className="shortcut">B</span>
                   </div>
+                  <div className="menu-dropdown-item" onClick={() => { setShowCommand(true); setMenuOpen(null) }}>
+                    Command Palette <span className="shortcut">Ctrl+K</span>
+                  </div>
                   <div className="menu-dropdown-divider" />
                   <div className="menu-dropdown-item" onClick={() => { if (defaults) { updateConfig(defaults); setMenuOpen(null) } }}>
                     Resetar Config
@@ -364,27 +400,21 @@ export default function App() {
               Ajuda
               {menuOpen === 'help' && (
                 <div className="menu-dropdown">
-                  <div className="menu-dropdown-item" onClick={() => { addToast('1=Importar  2=Cortes  3=Editor  B=Sidebar', 'info'); setMenuOpen(null) }}>
-                    Atalhos de Teclado <span className="shortcut">?</span>
+                  <div className="menu-dropdown-item" onClick={() => { setShowShortcuts(true); setMenuOpen(null) }}>
+                    Atalhos de Teclado <span className="shortcut">Ctrl+/</span>
                   </div>
                 </div>
               )}
             </div>
           </div>
-          <div className="workspace-switcher">
-            <button className={`ws-btn ${workspace === 'import' ? 'active' : ''}`} onClick={() => { setWorkspace('import'); setActiveMainTab('import') }}>
-              <Film className="ws-btn-icon" /> Importar
-            </button>
-            <button className={`ws-btn ${workspace === 'edit' ? 'active' : ''}`} onClick={() => { setWorkspace('edit'); setActiveMainTab('cuts') }}>
-              <Scissors className="ws-btn-icon" /> Editar
-            </button>
-            <button className={`ws-btn ${workspace === 'review' ? 'active' : ''}`} onClick={() => { setWorkspace('review'); setActiveMainTab('cuts') }}>
-              <MonitorPlay className="ws-btn-icon" /> Revisar
-            </button>
-          </div>
         </div>
 
         <div className="topbar-right">
+          <button className="topbar-cmd-btn" onClick={() => setShowCommand(true)} title="Command Palette (Ctrl+K)">
+            <Command size={12} />
+            <span>Buscar...</span>
+            <kbd className="topbar-cmd-kbd">Ctrl K</kbd>
+          </button>
           {processing && (
             <div className="topbar-processing">
               <Loader2 size={12} className="spin" />
@@ -496,6 +526,43 @@ export default function App() {
         </div>
         <span className="statusbar-right">Fala Tu v1.0</span>
       </div>
+
+      {showShortcuts && (
+        <div className="modal-overlay" onClick={() => setShowShortcuts(false)}>
+          <div className="modal-content shortcuts-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Atalhos de Teclado</span>
+              <button className="modal-close" onClick={() => setShowShortcuts(false)}>Esc</button>
+            </div>
+            <div className="shortcuts-grid">
+              <div className="shortcut-category">
+                <div className="shortcut-category-title">Navegacao</div>
+                <div className="shortcut-row"><span>Importar</span><kbd>1</kbd></div>
+                <div className="shortcut-row"><span>Cortes</span><kbd>2</kbd></div>
+                <div className="shortcut-row"><span>Editor</span><kbd>3</kbd></div>
+                <div className="shortcut-row"><span>Toggle Sidebar</span><kbd>B</kbd></div>
+              </div>
+              <div className="shortcut-category">
+                <div className="shortcut-category-title">Ferramentas</div>
+                <div className="shortcut-row"><span>Command Palette</span><kbd>Ctrl K</kbd></div>
+                <div className="shortcut-row"><span>Atalhos</span><kbd>Ctrl /</kbd></div>
+                <div className="shortcut-row"><span>Fechar modal</span><kbd>Esc</kbd></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCommand && (
+        <CommandPalette
+          cuts={cuts}
+          onNavigate={(tab) => { setActiveMainTab(tab); setShowCommand(false) }}
+          onEditCut={(cut) => { handleEditCut(cut); setShowCommand(false) }}
+          onToggleSidebar={() => { setSidebarVisible(v => !v); setShowCommand(false) }}
+          onShowShortcuts={() => { setShowShortcuts(true); setShowCommand(false) }}
+          onClose={() => setShowCommand(false)}
+        />
+      )}
 
       <div className="toast-container">
         {toasts.map(t => (

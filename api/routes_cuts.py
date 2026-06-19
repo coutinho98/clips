@@ -66,14 +66,15 @@ def _list_cuts_sync():
     if not PASTA_OUTPUT.exists():
         return {"cuts": cuts}
 
-    all_files = list(PASTA_OUTPUT.glob("corte_*.mp4"))
+    all_files = list(PASTA_OUTPUT.glob("*.mp4"))
     for d in PASTA_OUTPUT.iterdir():
         if d.is_dir():
-            all_files.extend(d.glob("corte_*.mp4"))
+            all_files.extend(d.glob("*.mp4"))
 
     for f in sorted(all_files, key=lambda x: x.stat().st_mtime, reverse=True):
         size_mb = f.stat().st_size / (1024 * 1024)
-        nome = f.stem.replace("corte_", "")
+        nome = f.stem
+        nome = nome.replace("corte_", "") if nome.startswith("corte_") else nome
 
         duracao = _get_duration_cached(f)
 
