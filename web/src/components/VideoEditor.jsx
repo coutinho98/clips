@@ -1,10 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
-  ArrowLeft, Type, MoveVertical, Crop, RotateCcw, Loader2,
-  Monitor, Image, SlidersHorizontal, Palette, ZoomIn, ZoomOut,
-  Maximize, Columns, Undo2, Redo2, Play, Pause,
-  SkipBack, SkipForward,
+  ArrowLeft, Type, Crop, RotateCcw, Loader2,
+  Palette, ZoomIn, ZoomOut, Maximize, Undo2, Redo2,
+  Play, Pause, SkipBack, SkipForward, Move, MousePointer2,
 } from 'lucide-react'
+import LiveSubtitle from './LiveSubtitle'
+import Timeline from './Timeline'
+
+const SUBTITLE_STYLES = [
+  { value: 'karaoke', label: 'Karaoke' },
+  { value: 'neon', label: 'Neon' },
+  { value: 'pop', label: 'Pop' },
+  { value: 'slide', label: 'Slide' },
+  { value: 'typewriter', label: 'Typewriter' },
+  { value: 'rainbow', label: 'Rainbow' },
+  { value: 'box', label: 'Box' },
+  { value: 'sombra', label: 'Sombra' },
+]
 
 export default function VideoEditor({ cut, config, onRerender, onClose, processing }) {
   const [editConfig, setEditConfig] = useState({
@@ -15,25 +27,18 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
     base_color: config?.base_color || '#B4B4B4',
     crop_vertical: config?.crop_vertical ?? true,
   })
-  const [previewUrl, setPreviewUrl] = useState(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
-  const [previewError, setPreviewError] = useState(null)
-  const [zoom, setZoom] = useState(100)
-  const [showCompare, setShowCompare] = useState(false)
   const [history, setHistory] = useState([])
   const [historyIdx, setHistoryIdx] = useState(-1)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [isPlaying, setIsPlaying] = useState(false)
-  const debounceRef = useRef(null)
-  const videoRef = useRef(null)
-  const prevUrlRef = useRef(null)
-  const abortRef = useRef(null)
-  const mountedRef = useRef(true)
-
-  useEffect(() => {
-    mountedRef.current = true
-    return () => { mountedRef.current = false }
-  }, [])
+  const [zoom, setZoom] = useState(100)
+  const [dragMode, setDragMode] = useState(false)
+  const [meta, setMeta] = useState(null)
+  const [videoDuration, setVideoDuration] = useState(0)
+  const [videoSize, setVideoSize] = useState({ w: 0, h: 0 })
+  const [displayH, setDisplayH] = useState(0)
+  const previewVideoRef = useRef(null)
+  const previewWrapRef = useRef(null)
 
   useEffect(() => {
     const initial = {
@@ -50,57 +55,21 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
   }, [cut?.cut_id])
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(fetchPreview, 400)
-    return () => {
-      clearTimeout(debounceRef.current)
-      if (abortRef.current) abortRef.current.abort()
-    }
-  }, [editConfig, cut?.cut_id])
+    if (!cut?.cut_id) return
+    fetch(`/api/cut/${encodeURIComponent(cut.cut_id)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setMeta(d))
+      .catch(() => {})
+  }, [cut?.cut_id])
 
   useEffect(() => {
-    return () => {
-      if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current)
-    }
-  }, [])
-
-  async function fetchPreview() {
-    if (!cut?.cut_id || !mountedRef.current) return
-    if (abortRef.current) abortRef.current.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-    const timeout = setTimeout(() => controller.abort(), 10000)
-    setPreviewLoading(true)
-    setPreviewError(null)
-    try {
-      const res = await fetch(`/api/cut/${encodeURIComponent(cut.cut_id)}/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editConfig),
-        signal: controller.signal,
-      })
-      if (!mountedRef.current) return
-      if (!res.ok) {
-        setPreviewError(`Erro ${res.status}`)
-        return
-      }
-      const ct = res.headers.get('content-type') || ''
-      if (!ct.includes('image/')) {
-        setPreviewError('Preview indisponível')
-        return
-      }
-      const blob = await res.blob()
-      if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current)
-      const url = URL.createObjectURL(blob)
-      prevUrlRef.current = url
-      setPreviewUrl(url)
-    } catch {
-      if (!controller.signal.aborted) setPreviewError('Falha ao carregar')
-    } finally {
-      clearTimeout(timeout)
-      if (mountedRef.current) setPreviewLoading(false)
-    }
-  }
+    const el = previewWrapRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => { setDisplayH(el.offsetHeight) })
+    ro.observe(el)
+    setDisplayH(el.offsetHeight)
+    return () => ro.disconnect()
+  }, [cut?.cut_id])
 
   function pushHistory(newConfig) {
     setHistory(prev => {
@@ -132,19 +101,15 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
     setEditConfig(history[newIdx])
   }
 
-  function handleRerender() {
-    onRerender(editConfig)
-  }
-
   function togglePlayPause() {
-    const v = videoRef.current
+    const v = previewVideoRef.current
     if (!v) return
     if (v.paused) { v.play(); setIsPlaying(true) }
     else { v.pause(); setIsPlaying(false) }
   }
 
   function stepFrame(direction) {
-    const v = videoRef.current
+    const v = previewVideoRef.current
     if (!v) return
     v.pause()
     setIsPlaying(false)
@@ -156,171 +121,198 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
     const idx = speeds.indexOf(playbackSpeed)
     const next = speeds[(idx + 1) % speeds.length]
     setPlaybackSpeed(next)
-    if (videoRef.current) videoRef.current.playbackRate = next
+    if (previewVideoRef.current) previewVideoRef.current.playbackRate = next
   }
 
+  const videoSrc = `/api/cuts/${encodeURIComponent(cut.arquivo)}`
+  const RENDER_H = videoSize.h || 1920
+  const scaleFactor = displayH > 0 && RENDER_H > 0 ? displayH / RENDER_H : 1
+  const scaledFontSize = editConfig.font_size * scaleFactor
+  const scaledMarginBottom = editConfig.text_margin_bottom * scaleFactor
+
   return (
-    <div className="panel slide-in-right">
-      <div className="panel-header">
-        <div className="panel-header-left">
-          <Image className="panel-icon" />
-          <span className="panel-title">Editor - {cut.titulo}</span>
+    <div className="bg-bg-tertiary border border-border rounded-xl overflow-hidden flex flex-col h-full" style={{ animation: 'slide-in-right 0.25s ease forwards' }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        <span className="text-xs font-semibold text-text">Editor - {cut.titulo}</span>
+        <div className="flex items-center gap-1.5">
+          <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={handleUndo} disabled={historyIdx <= 0} title="Desfazer">
+            <Undo2 size={12} />
+          </button>
+          <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={handleRedo} disabled={historyIdx >= history.length - 1} title="Refazer">
+            <Redo2 size={12} />
+          </button>
+          <button className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all ${dragMode ? 'bg-accent text-white' : 'text-text-secondary hover:text-text hover:bg-bg-hover'}`}
+            onClick={() => setDragMode(v => !v)} title="Modo arrastar legenda">
+            {dragMode ? <Move size={13} /> : <MousePointer2 size={13} />}
+            {dragMode ? 'Arrastar' : 'Selecionar'}
+          </button>
+          <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onClose}>
+            <ArrowLeft size={13} /> Voltar
+          </button>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={onClose}>
-          <ArrowLeft size={13} /> Voltar
-        </button>
       </div>
 
-      <div className="panel-body">
-        <div className="editor-undo-row" style={{ marginBottom: 10 }}>
-          <button className="editor-undo-btn" onClick={handleUndo} disabled={historyIdx <= 0}>
-            <Undo2 size={12} /> Desfazer
-          </button>
-          <button className="editor-undo-btn" onClick={handleRedo} disabled={historyIdx >= history.length - 1}>
-            <Redo2 size={12} /> Refazer
-          </button>
-        </div>
-
-        <div className="editor-layout">
-          <div className="editor-preview-container">
-            <div className="editor-preview-toolbar">
-              <div className="editor-preview-toolbar-left">
-                <button className="editor-zoom-btn" onClick={() => setZoom(z => Math.max(50, z - 25))}><ZoomOut size={13} /></button>
-                <span className="editor-zoom-label">{zoom}%</span>
-                <button className="editor-zoom-btn" onClick={() => setZoom(z => Math.min(200, z + 25))}><ZoomIn size={13} /></button>
-                <button className="editor-zoom-btn" onClick={() => setZoom(100)}><Maximize size={13} /></button>
+      {/* Body */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Main */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Preview wrapper */}
+          <div className="flex-1 flex flex-col items-center justify-center overflow-hidden bg-bg-secondary relative">
+            {/* Toolbar */}
+            <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-2 z-10 bg-gradient-to-b from-black/40 to-transparent">
+              <div className="flex items-center gap-1">
+                <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover/50 transition-all" onClick={() => setZoom(z => Math.max(50, z - 25))}><ZoomOut size={13} /></button>
+                <span className="text-[10px] text-text-secondary w-9 text-center">{zoom}%</span>
+                <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover/50 transition-all" onClick={() => setZoom(z => Math.min(200, z + 25))}><ZoomIn size={13} /></button>
+                <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover/50 transition-all" onClick={() => setZoom(100)}><Maximize size={13} /></button>
               </div>
-              <div className="editor-preview-toolbar-right">
-                <button className={`editor-compare-btn ${showCompare ? 'active' : ''}`}
-                  onClick={() => setShowCompare(v => !v)}>
-                  <Columns size={12} /> Comparar
-                </button>
+              <div>
+                <span className="text-[9px] font-bold text-accent-light bg-accent/10 px-2 py-0.5 rounded tracking-wide">LIVE PREVIEW</span>
               </div>
             </div>
 
-            <div style={{ display: showCompare ? 'grid' : 'block', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div className="editor-preview-area" style={{ maxHeight: showCompare ? 360 : 480, transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>
-                {previewUrl ? (
-                  <img src={previewUrl} alt="Preview" className="editor-preview-img" />
-                ) : previewError ? (
-                  <div className="editor-preview-placeholder">{previewError}</div>
-                ) : (
-                  <div className="editor-preview-placeholder">Carregando preview...</div>
-                )}
-                {previewLoading && (
-                  <div className="editor-preview-loading">
-                    <Loader2 size={11} className="spin" /> atualizando
-                  </div>
+            {/* Video preview */}
+            <div className="flex items-center justify-center h-full w-full pt-8 pb-2" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'center' }}>
+              <div className="relative w-[320px] aspect-[9/16] bg-black overflow-hidden rounded-md shadow-2xl" ref={previewWrapRef}>
+                <video
+                  ref={previewVideoRef}
+                  src={videoSrc}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  playsInline
+                  crossOrigin="anonymous"
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  onEnded={() => setIsPlaying(false)}
+                  onLoadedMetadata={(e) => {
+                    setVideoDuration(e.target.duration)
+                    setVideoSize({ w: e.target.videoWidth, h: e.target.videoHeight })
+                  }}
+                />
+                {meta?.segmentos && (
+                  <LiveSubtitle
+                    videoRef={previewVideoRef}
+                    segmentos={meta.segmentos}
+                    inicioGlobal={meta.inicio || 0}
+                    style={editConfig.subtitle_style}
+                    fontSize={scaledFontSize}
+                    marginBottom={scaledMarginBottom}
+                    highlightColor={editConfig.highlight_color}
+                    baseColor={editConfig.base_color}
+                    onDrag={(y) => handleChange('text_margin_bottom', Math.round(y / scaleFactor))}
+                    onResize={(s) => handleChange('font_size', Math.round(s / scaleFactor))}
+                    dragMode={dragMode}
+                  />
                 )}
               </div>
-              {showCompare && (
-                <div className="editor-preview-area" style={{ maxHeight: 360 }}>
-                  <video
-                    ref={videoRef}
-                    src={`/api/cuts/${encodeURIComponent(cut.arquivo)}`}
-                    onPlay={() => setIsPlaying(true)}
-                    onPause={() => setIsPlaying(false)}
-                    onEnded={() => setIsPlaying(false)}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
-                </div>
-              )}
+            </div>
+
+            {/* Playback controls */}
+            <div className="flex items-center gap-2 py-2 z-10">
+              <button className="flex items-center justify-center w-8 h-8 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={() => stepFrame(-1)}><SkipBack size={14} /></button>
+              <button className="flex items-center justify-center w-10 h-10 rounded-full bg-accent text-white hover:bg-accent-hover transition-all" onClick={togglePlayPause}>
+                {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+              </button>
+              <button className="flex items-center justify-center w-8 h-8 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={() => stepFrame(1)}><SkipForward size={14} /></button>
+              <button className="px-2 py-1 text-[11px] font-medium text-text-secondary bg-bg-elevated border border-border rounded-md hover:text-text hover:bg-bg-hover transition-all ml-1" onClick={cycleSpeed}>{playbackSpeed}x</button>
             </div>
           </div>
 
-          <div className="editor-controls">
-            <div className="panel">
-              <div className="panel-header">
-                <div className="panel-header-left">
-                  <SlidersHorizontal className="panel-icon" size={14} />
-                  <span className="panel-title" style={{ fontSize: 11 }}>Configuracoes</span>
-                </div>
-              </div>
-              <div className="panel-body">
-                <div className="form-group">
-                  <label className="form-label"><Type className="form-label-icon" /> Fonte</label>
-                  <div className="range-row">
-                    <input type="range" className="range-input" min="16" max="120" value={editConfig.font_size}
-                      onChange={(e) => handleChange('font_size', parseInt(e.target.value))} />
-                    <input className="range-value-input" type="number" min="16" max="120" value={editConfig.font_size}
-                      onChange={(e) => handleChange('font_size', Math.max(16, Math.min(120, parseInt(e.target.value) || 16)))} />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label"><MoveVertical className="form-label-icon" /> Posicao</label>
-                  <div className="range-row">
-                    <input type="range" className="range-input" min="40" max="800" value={editConfig.text_margin_bottom}
-                      onChange={(e) => handleChange('text_margin_bottom', parseInt(e.target.value))} />
-                    <input className="range-value-input" type="number" min="40" max="800" value={editConfig.text_margin_bottom}
-                      onChange={(e) => handleChange('text_margin_bottom', Math.max(40, Math.min(800, parseInt(e.target.value) || 40)))} />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label"><Type className="form-label-icon" /> Estilo</label>
-                  <select className="form-select" value={editConfig.subtitle_style}
-                    onChange={(e) => handleChange('subtitle_style', e.target.value)}>
-                    <option value="karaoke">Karaoke</option>
-                    <option value="neon">Neon</option>
-                    <option value="box">Box</option>
-                    <option value="sombra">Sombra</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label"><Palette className="form-label-icon" /> Cores</label>
-                  <div className="color-row">
-                    <div className="color-item">
-                      <div className="color-input-wrapper">
-                        <input type="color" value={editConfig.highlight_color}
-                          onChange={(e) => handleChange('highlight_color', e.target.value)} />
-                      </div>
-                      <span className="color-label">Destaque</span>
-                    </div>
-                    <div className="color-item">
-                      <div className="color-input-wrapper">
-                        <input type="color" value={editConfig.base_color}
-                          onChange={(e) => handleChange('base_color', e.target.value)} />
-                      </div>
-                      <span className="color-label">Base</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <div className="toggle-row">
-                    <label className="form-label" style={{ marginBottom: 0 }}><Crop className="form-label-icon" /> Crop 9:16</label>
-                    <div className={`toggle ${editConfig.crop_vertical ? 'active' : ''}`}
-                      onClick={() => handleChange('crop_vertical', !editConfig.crop_vertical)} />
-                  </div>
-                </div>
-              </div>
-            </div>
+          <Timeline
+            videoRef={previewVideoRef}
+            duration={videoDuration}
+            segmentos={meta?.segmentos || []}
+            inicioGlobal={meta?.inicio || 0}
+          />
+        </div>
 
-            <div className="panel">
-              <div className="panel-header">
-                <div className="panel-header-left">
-                  <Monitor className="panel-icon" size={14} />
-                  <span className="panel-title" style={{ fontSize: 11 }}>Video Original</span>
-                </div>
-              </div>
-              <div className="panel-body" style={{ padding: 8 }}>
-                <div className="editor-video-player">
-                  <video ref={videoRef} src={`/api/cuts/${encodeURIComponent(cut.arquivo)}`}
-                    onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)}
-                    onEnded={() => setIsPlaying(false)} />
-                </div>
-                <div className="editor-playback" style={{ marginTop: 6 }}>
-                  <button className="editor-playback-btn" onClick={() => stepFrame(-1)}><SkipBack size={12} /></button>
-                  <button className="editor-playback-btn play-main" onClick={togglePlayPause}>
-                    {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+        {/* Sidebar controls */}
+        <div className="w-[220px] shrink-0 border-l border-border flex flex-col overflow-hidden bg-bg-secondary">
+          <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+            <div>
+              <label className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary mb-1.5">
+                <Type size={11} className="text-text-muted" /> Estilo da Legenda
+              </label>
+              <div className="grid grid-cols-4 gap-1">
+                {SUBTITLE_STYLES.map(s => (
+                  <button
+                    key={s.value}
+                    className={`px-1 py-1.5 rounded text-[9px] font-medium transition-all border ${editConfig.subtitle_style === s.value ? 'border-accent bg-accent/10 text-accent-light' : 'border-border text-text-secondary hover:border-border-light hover:text-text'}`}
+                    onClick={() => handleChange('subtitle_style', s.value)}
+                  >
+                    {s.label}
                   </button>
-                  <button className="editor-playback-btn" onClick={() => stepFrame(1)}><SkipForward size={12} /></button>
-                  <button className="editor-playback-speed" onClick={cycleSpeed}>{playbackSpeed}x</button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary mb-1.5">
+                <Type size={11} className="text-text-muted" /> Tamanho da Fonte
+              </label>
+              <div className="flex items-center gap-2">
+                <input type="range" className="flex-1 cursor-pointer accent-accent" min={16} max={120} value={editConfig.font_size}
+                  onChange={(e) => handleChange('font_size', parseInt(e.target.value))} />
+                <input type="number" className="w-12 px-1 py-0.5 bg-bg-elevated border border-border rounded text-[11px] text-text text-center outline-none focus:border-accent min-w-0"
+                  min={16} max={120} value={editConfig.font_size}
+                  onChange={(e) => handleChange('font_size', Math.max(16, Math.min(120, parseInt(e.target.value) || 16)))} />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-medium text-text-secondary mb-1.5">Posicao Vertical</label>
+              <div className="flex items-center gap-2">
+                <input type="range" className="flex-1 cursor-pointer accent-accent" min={20} max={800} value={editConfig.text_margin_bottom}
+                  onChange={(e) => handleChange('text_margin_bottom', parseInt(e.target.value))} />
+                <input type="number" className="w-12 px-1 py-0.5 bg-bg-elevated border border-border rounded text-[11px] text-text text-center outline-none focus:border-accent min-w-0"
+                  min={20} max={800} value={editConfig.text_margin_bottom}
+                  onChange={(e) => handleChange('text_margin_bottom', Math.max(20, Math.min(800, parseInt(e.target.value) || 20)))} />
+              </div>
+              {!dragMode && (
+                <div className="text-[10px] text-text-muted mt-1">Ative o modo arrastar para mover a legenda direto no video</div>
+              )}
+            </div>
+
+            <div>
+              <label className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary mb-1.5">
+                <Palette size={11} className="text-text-muted" /> Cores
+              </label>
+              <div className="flex gap-3">
+                <div className="flex flex-col items-center gap-1">
+                  <div className="w-8 h-8 rounded-md border border-border-light overflow-hidden cursor-pointer">
+                    <input type="color" value={editConfig.highlight_color} className="w-10 h-10 -m-1 cursor-pointer"
+                      onChange={(e) => handleChange('highlight_color', e.target.value)} />
+                  </div>
+                  <span className="text-[9px] text-text-muted">Destaque</span>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <div className="w-8 h-8 rounded-md border border-border-light overflow-hidden cursor-pointer">
+                    <input type="color" value={editConfig.base_color} className="w-10 h-10 -m-1 cursor-pointer"
+                      onChange={(e) => handleChange('base_color', e.target.value)} />
+                  </div>
+                  <span className="text-[9px] text-text-muted">Base</span>
                 </div>
               </div>
             </div>
 
-            <button className="btn btn-primary" onClick={handleRerender} disabled={processing} style={{ width: '100%' }}>
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary">
+                <Crop size={11} className="text-text-muted" /> Crop 9:16
+              </label>
+              <div className={`w-8 h-4 rounded-full cursor-pointer transition-all ${editConfig.crop_vertical ? 'bg-accent' : 'bg-bg-elevated border border-border'}`}
+                onClick={() => handleChange('crop_vertical', !editConfig.crop_vertical)}>
+                <div className={`w-3 h-3 bg-white rounded-full m-0.5 transition-transform ${editConfig.crop_vertical ? 'translate-x-4' : ''}`} />
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3 border-t border-border">
+            <button className="flex items-center justify-center gap-1.5 w-full px-3 py-2 bg-accent text-white rounded-md text-xs font-medium hover:bg-accent-hover transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => onRerender(editConfig)} disabled={processing}>
               {processing ? (
-                <><Loader2 size={14} className="spin" /> Renderizando...</>
+                <><Loader2 size={14} className="animate-spin" /> Renderizando...</>
               ) : (
                 <><RotateCcw size={14} /> Re-renderizar</>
               )}

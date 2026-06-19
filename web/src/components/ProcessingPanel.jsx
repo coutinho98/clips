@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { Panel, PanelHeader, Button } from '../ui'
 import {
   Link, Upload, HardDrive, AlertCircle, Film, ArrowRight, FolderOpen,
   Check, Loader2, CircleDot, ScanSearch, Scissors, Sparkles,
@@ -54,111 +55,128 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
   }
 
   return (
-    <div className="panel">
-      <div className="panel-header">
-        <div className="panel-header-left">
-          <Film className="panel-icon" />
-          <span className="panel-title">Importar Video</span>
+    <Panel>
+      <PanelHeader>
+        <div className="flex items-center gap-2">
+          <Film size={14} className="text-accent-light" />
+          <span className="text-xs font-semibold text-text">Importar Video</span>
         </div>
-      </div>
+      </PanelHeader>
 
-      <div className="panel-body">
-        <div className="tabs">
-          <button className={`tab ${activeTab === 'url' ? 'active' : ''}`} onClick={() => setActiveTab('url')}>
-            <Link className="tab-icon" /> URL
-          </button>
-          <button className={`tab ${activeTab === 'upload' ? 'active' : ''}`} onClick={() => setActiveTab('upload')}>
-            <Upload className="tab-icon" /> Upload
-          </button>
-          <button className={`tab ${activeTab === 'local' ? 'active' : ''}`} onClick={() => setActiveTab('local')}>
-            <HardDrive className="tab-icon" /> Local
-          </button>
+      <div className="p-4 flex flex-col gap-3">
+        <div className="flex gap-1 bg-bg-elevated rounded-lg p-0.5">
+          {[
+            { key: 'url', label: 'URL', icon: Link },
+            { key: 'upload', label: 'Upload', icon: Upload },
+            { key: 'local', label: 'Local', icon: HardDrive },
+          ].map(t => (
+            <button
+              key={t.key}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === t.key ? 'bg-accent text-white' : 'text-text-secondary hover:text-text'}`}
+              onClick={() => setActiveTab(t.key)}
+            >
+              <t.icon size={13} /> {t.label}
+            </button>
+          ))}
         </div>
 
         {activeTab === 'url' && (
-          <div className="fade-in">
-            <div className="form-group">
-              <label className="form-label">URL da Live (YouTube, Twitch, etc)</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input className="form-input" type="text"
-                  placeholder="https://www.youtube.com/watch?v=..."
-                  onChange={(e) => urlRef.current = e.target.value}
-                  disabled={processing}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSubmitUrl()}
-                  style={{ flex: 1, minWidth: 0 }} />
-                <button className="btn btn-primary" onClick={handleSubmitUrl} disabled={processing}>
-                  <ArrowRight size={14} />
-                </button>
-              </div>
+          <div style={{ animation: 'fade-in 0.2s ease forwards' }}>
+            <label className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary mb-1.5">URL da Live (YouTube, Twitch, etc)</label>
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                placeholder="https://www.youtube.com/watch?v=..."
+                onChange={(e) => urlRef.current = e.target.value}
+                disabled={processing}
+                onKeyDown={(e) => e.key === 'Enter' && handleSubmitUrl()}
+                className="flex-1 min-w-0 px-2.5 py-1.5 bg-bg-elevated border border-border rounded-md text-xs text-text outline-none focus:border-accent transition-colors"
+              />
+              <Button variant="primary" onClick={handleSubmitUrl} disabled={processing}>
+                <ArrowRight size={14} />
+              </Button>
             </div>
           </div>
         )}
 
         {activeTab === 'upload' && (
-          <div className="fade-in">
-            <div className="upload-zone"
-              style={dragOver ? { borderColor: 'var(--accent)', background: 'var(--accent-bg)' } : {}}
+          <div style={{ animation: 'fade-in 0.2s ease forwards' }}>
+            <div
+              className={`flex flex-col items-center justify-center gap-2 py-8 border-2 border-dashed rounded-lg cursor-pointer transition-all ${dragOver ? 'border-accent bg-accent/10' : 'border-border-light hover:border-accent/50 hover:bg-bg-hover'}`}
               onClick={() => fileRef.current?.click()}
               onDrop={handleDrop}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-              onDragLeave={() => setDragOver(false)}>
-              <Upload className="upload-zone-icon" />
-              <div className="upload-zone-title">Arraste um video ou clique para selecionar</div>
-              <div className="upload-zone-hint">MP4, MOV, AVI, MKV</div>
-              <input ref={fileRef} type="file" accept="video/*" onChange={handleFileChange} style={{ display: 'none' }} />
+              onDragLeave={() => setDragOver(false)}
+            >
+              <Upload size={28} className="text-accent-light" />
+              <div className="text-xs font-medium text-text">Arraste um video ou clique para selecionar</div>
+              <div className="text-[10px] text-text-muted">MP4, MOV, AVI, MKV</div>
+              <input ref={fileRef} type="file" accept="video/*" onChange={handleFileChange} className="hidden" />
             </div>
           </div>
         )}
 
         {activeTab === 'local' && (
-          <div className="fade-in">
-            <div className="form-group">
-              <label className="form-label"><FolderOpen className="form-label-icon" /> Videos no servidor</label>
-              <select className="form-select" value={selectedVideo}
-                onChange={(e) => setSelectedVideo(e.target.value)} disabled={processing}>
-                <option value="">Selecione um video...</option>
-                {localVideos.map((v) => (
-                  <option key={v.arquivo} value={v.caminho}>{v.arquivo} ({v.tamanho_mb} MB)</option>
-                ))}
-              </select>
-            </div>
-            <button className="btn btn-primary" onClick={handleLocalProcess}
-              disabled={processing || !selectedVideo} style={{ width: '100%' }}>
+          <div style={{ animation: 'fade-in 0.2s ease forwards' }}>
+            <label className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary mb-1.5">
+              <FolderOpen size={11} className="text-text-muted" /> Videos no servidor
+            </label>
+            <select
+              className="w-full px-2.5 py-1.5 bg-bg-elevated border border-border rounded-md text-xs text-text outline-none focus:border-accent cursor-pointer transition-colors mb-2"
+              value={selectedVideo}
+              onChange={(e) => setSelectedVideo(e.target.value)}
+              disabled={processing}
+            >
+              <option value="">Selecione um video...</option>
+              {localVideos.map((v) => (
+                <option key={v.arquivo} value={v.caminho}>{v.arquivo} ({v.tamanho_mb} MB)</option>
+              ))}
+            </select>
+            <Button variant="primary" onClick={handleLocalProcess} disabled={processing || !selectedVideo} className="w-full">
               Processar Video
-            </button>
+            </Button>
           </div>
         )}
 
         {(processing || progress > 0) && (
-          <div className="progress-section">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ flex: 1 }}>
-                <div className="progress-header">
-                  <span className="progress-step">{step}</span>
-                  <span className="progress-pct">{Math.round(progress)}%</span>
+          <div className="flex flex-col gap-2.5 pt-1">
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] text-text-secondary">{step}</span>
+                  <span className="text-[11px] font-semibold text-accent-light">{Math.round(progress)}%</span>
                 </div>
-                <div className="progress-bar-bg">
-                  <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
+                <div className="h-1.5 bg-bg-elevated rounded-full overflow-hidden">
+                  <div className="h-full bg-accent rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
                 </div>
               </div>
               {processing && (
-                <button className="cancel-btn" onClick={onCancel}>
+                <button
+                  className="px-2.5 py-1.5 text-[11px] text-danger bg-danger/10 border border-danger/30 rounded-md hover:bg-danger/20 transition-all shrink-0"
+                  onClick={onCancel}
+                >
                   Cancelar
                 </button>
               )}
             </div>
 
-            <div className="pipeline-steps">
+            <div className="flex items-center gap-1 flex-wrap">
               {pipeline.map((s, i) => {
                 const Icon = STEP_ICONS[s.key] || CircleDot
                 return (
-                  <span key={s.key} style={{ display: 'contents' }}>
-                    <div className={`pipeline-step ${s.status}`}>
-                      <Icon className="pipeline-step-icon" />
+                  <span key={s.key} className="flex items-center gap-1">
+                    <div className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-all ${
+                      s.status === 'done' ? 'text-success bg-success/10' :
+                      s.status === 'active' ? 'text-accent-light bg-accent/10' :
+                      'text-text-muted bg-bg-elevated'
+                    }`}>
+                      <Icon size={11} />
                       {s.label}
+                      {s.status === 'done' && <Check size={10} />}
+                      {s.status === 'active' && <Loader2 size={10} className="animate-spin" />}
                     </div>
                     {i < pipeline.length - 1 && (
-                      <div className={`pipeline-connector ${s.status === 'done' ? 'done' : ''}`} />
+                      <div className={`w-3 h-px ${s.status === 'done' ? 'bg-success/40' : 'bg-border'}`} />
                     )}
                   </span>
                 )
@@ -168,12 +186,12 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
         )}
 
         {error && (
-          <div className="error-msg">
-            <AlertCircle className="error-msg-icon" />
+          <div className="flex items-center gap-2 px-3 py-2 bg-danger/10 border border-danger/30 rounded-md text-xs text-danger">
+            <AlertCircle size={14} className="shrink-0" />
             {error}
           </div>
         )}
       </div>
-    </div>
+    </Panel>
   )
 }

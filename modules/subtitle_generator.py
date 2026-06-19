@@ -128,6 +128,10 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Base,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
 Style: Karaoke,FiraSans-SemiBold,{FONT_SIZE},{hl_ass},&HFF000000,&HFF000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,2,10,10,{margin_v},1
 Style: Neon,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Pop,FiraSans-SemiBold,{FONT_SIZE},{hl_ass},&HFF000000,&HFF000000,&H00000000,-1,0,0,0,130,130,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Slide,FiraSans-SemiBold,{FONT_SIZE},{hl_ass},&H00000000,&HFF000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Typewriter,FiraSans-SemiBold,{FONT_SIZE},{hl_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Rainbow,FiraSans-SemiBold,{FONT_SIZE},{hl_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
 Style: Box,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,3,2,1,2,10,10,{margin_v},1
 Style: Sombra,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,{margin_v},1
 Style: Hook,FiraSans-SemiBold,80,&H00FFFFFF,&H00000000,&H00000000,&HF0000000,-1,0,0,0,100,100,2,0,1,4,2,8,20,20,0,1
@@ -304,7 +308,7 @@ def _gerar_ass_karaoke(segmentos, inicio_global, fim_global, video_w, video_h):
 
 def _gerar_ass_simples(segmentos, inicio_global, fim_global, video_w, video_h, estilo):
     ass = _build_ass_header(video_w, video_h)
-    style_map = {"neon": "Neon", "box": "Box", "sombra": "Sombra"}
+    style_map = {"neon": "Neon", "box": "Box", "sombra": "Sombra", "pop": "Pop", "slide": "Slide", "typewriter": "Typewriter", "rainbow": "Rainbow"}
     style_name = style_map.get(estilo, "Sombra")
     grupos = _segmentos_para_grupos(segmentos, inicio_global, fim_global)
 
@@ -367,7 +371,8 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
 
     video_w, video_h = RESOLUCAO
 
-    if estilo == "karaoke":
+    word_by_word_styles = {"karaoke", "pop", "slide", "typewriter", "rainbow"}
+    if estilo in word_by_word_styles:
         ass_content = _gerar_ass_karaoke(segmentos, inicio_seg, fim_seg, video_w, video_h)
     else:
         ass_content = _gerar_ass_simples(segmentos, inicio_seg, fim_seg, video_w, video_h, estilo)

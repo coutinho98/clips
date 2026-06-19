@@ -9,7 +9,6 @@ import {
   Film, MonitorPlay, Download, ChevronDown,
   RotateCcw, Check, AlertCircle, Info, Command,
 } from 'lucide-react'
-import './App.css'
 
 const PIPELINE_STEPS = [
   { key: 'download', label: 'Download' },
@@ -31,11 +30,13 @@ function Toast({ toast, onRemove }) {
   }, [toast.id, toast.duration, onRemove])
 
   const icons = { success: Check, error: AlertCircle, info: Info }
+  const colors = { success: 'text-success', error: 'text-danger', info: 'text-info' }
   const Icon = icons[toast.type] || Info
 
   return (
-    <div className={`toast ${toast.type} ${leaving ? 'leaving' : ''}`}>
-      <Icon className="toast-icon" />
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-md text-xs border shadow-lg transition-all ${toast.type === 'success' ? 'bg-success/10 border-success/30 text-text' : toast.type === 'error' ? 'bg-danger/10 border-danger/30 text-text' : 'bg-info/10 border-info/30 text-text'} ${leaving ? 'opacity-0 translate-x-4' : ''}`}
+      style={{ animation: 'slide-in-right 0.25s ease forwards' }}>
+      <Icon size={14} className={colors[toast.type] || 'text-info'} />
       <span>{toast.message}</span>
     </div>
   )
@@ -82,6 +83,7 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showCommand, setShowCommand] = useState(false)
+  const [showSplash, setShowSplash] = useState(true)
   const wsRef = useRef(null)
   const resizeRef = useRef(null)
   const toastsIdRef = useRef(0)
@@ -175,11 +177,11 @@ export default function App() {
     function onUp() {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
-      if (resizeRef.current) resizeRef.current.classList.remove('active')
+      if (resizeRef.current) resizeRef.current.classList.remove('bg-accent')
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-    if (resizeRef.current) resizeRef.current.classList.add('active')
+    if (resizeRef.current) resizeRef.current.classList.add('bg-accent')
   }
 
   async function fetchExistingCuts() {
@@ -342,96 +344,106 @@ export default function App() {
 
   const pipeline = getPipelineState(step, progress)
 
+  useEffect(() => {
+    const t = setTimeout(() => setShowSplash(false), 2600)
+    return () => clearTimeout(t)
+  }, [])
+
   return (
-    <div className="app">
-      <div className="topbar">
-        <div className="topbar-left">
-          <button className="sidebar-toggle-btn" onClick={() => setSidebarVisible(v => !v)} title="Toggle Sidebar (B)">
+    <div className="flex flex-col h-screen bg-bg text-text">
+      {/* Splash */}
+      {showSplash && (
+        <div className="fixed inset-0 z-[2000] bg-black flex items-center justify-center cursor-pointer" style={{ animation: 'splash-fade-out 0.4s ease 2.2s forwards' }} onClick={() => setShowSplash(false)}>
+          <div className="flex flex-col items-center gap-4">
+            <div className="text-4xl font-bold tracking-tight flex">
+              {'FALA TU'.split('').map((ch, i) => (
+                <span key={i} className="inline-block opacity-0" style={{ animation: `splash-char-in 0.5s ease ${i * 0.08}s forwards` }}>
+                  {ch === ' ' ? '\u00A0' : ch}
+                </span>
+              ))}
+            </div>
+            <div className="text-xs text-zinc-500 opacity-0" style={{ animation: 'splash-fade-in 0.5s ease 0.6s forwards' }}>clips que falam por si</div>
+            <div className="w-0 h-0.5 bg-accent rounded-full overflow-hidden" style={{ animation: 'splash-bar 1.5s ease 0.4s forwards' }} />
+          </div>
+        </div>
+      )}
+
+      {/* Topbar */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-bg-secondary shrink-0 z-50">
+        <div className="flex items-center gap-2">
+          <button className="flex items-center justify-center w-8 h-8 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={() => setSidebarVisible(v => !v)} title="Toggle Sidebar (B)">
             {sidebarVisible ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
           </button>
-          <div className="topbar-brand">
-            <div className="topbar-logo"><Zap size={16} /></div>
-            <div className="topbar-text">
-              <h1>Fala Tu</h1>
-            </div>
+          <div className="flex items-center gap-2 mr-2">
+            <div className="flex items-center justify-center w-7 h-7 rounded-md bg-accent"><Zap size={16} className="text-white" /></div>
+            <h1 className="text-sm font-bold text-text">Fala Tu</h1>
           </div>
-          <div className="topbar-menus">
-            <div
-              className={`menu-item ${menuOpen === 'file' ? 'open' : ''}`}
-              onClick={() => setMenuOpen(menuOpen === 'file' ? null : 'file')}
-            >
-              Arquivo
-              {menuOpen === 'file' && (
-                <div className="menu-dropdown">
-                  <div className="menu-dropdown-item" onClick={() => { setActiveMainTab('import'); setMenuOpen(null) }}>
-                    Importar Video <span className="shortcut">1</span>
+          <div className="topbar-menus flex items-center gap-0.5">
+            {[
+              { key: 'file', label: 'Arquivo', items: [
+                { label: 'Importar Video', shortcut: '1', action: () => { setActiveMainTab('import'); setMenuOpen(null) } },
+                { divider: true },
+                { label: 'Recarregar Config', action: () => { fetchConfig(); setMenuOpen(null) } },
+              ]},
+              { key: 'edit', label: 'Editar', items: [
+                { label: 'Toggle Sidebar', shortcut: 'B', action: () => { setSidebarVisible(v => !v); setMenuOpen(null) } },
+                { label: 'Command Palette', shortcut: 'Ctrl+K', action: () => { setShowCommand(true); setMenuOpen(null) } },
+                { divider: true },
+                { label: 'Resetar Config', action: () => { if (defaults) { updateConfig(defaults); setMenuOpen(null) } } },
+              ]},
+              { key: 'help', label: 'Ajuda', items: [
+                { label: 'Atalhos de Teclado', shortcut: 'Ctrl+/', action: () => { setShowShortcuts(true); setMenuOpen(null) } },
+              ]},
+            ].map(menu => (
+              <div key={menu.key} className="relative">
+                <button
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${menuOpen === menu.key ? 'bg-bg-hover text-text' : 'text-text-secondary hover:text-text hover:bg-bg-hover'}`}
+                  onClick={() => setMenuOpen(menuOpen === menu.key ? null : menu.key)}
+                >
+                  {menu.label}
+                </button>
+                {menuOpen === menu.key && (
+                  <div className="absolute top-full left-0 mt-1 bg-bg-secondary border border-border-light rounded-lg shadow-2xl py-1 min-w-[180px] z-[100]" style={{ animation: 'modal-slide 150ms ease' }}>
+                    {menu.items.map((item, i) => item.divider ? (
+                      <div key={i} className="h-px bg-border my-1" />
+                    ) : (
+                      <div key={i} className="flex items-center justify-between px-3 py-1.5 text-xs text-text-secondary hover:text-text hover:bg-bg-hover cursor-pointer transition-colors"
+                        onClick={item.action}>
+                        <span>{item.label}</span>
+                        {item.shortcut && <kbd className="text-[9px] text-text-muted bg-bg-elevated px-1.5 py-0.5 rounded">{item.shortcut}</kbd>}
+                      </div>
+                    ))}
                   </div>
-                  <div className="menu-dropdown-divider" />
-                  <div className="menu-dropdown-item" onClick={() => { fetchConfig(); setMenuOpen(null) }}>
-                    Recarregar Config
-                  </div>
-                </div>
-              )}
-            </div>
-            <div
-              className={`menu-item ${menuOpen === 'edit' ? 'open' : ''}`}
-              onClick={() => setMenuOpen(menuOpen === 'edit' ? null : 'edit')}
-            >
-              Editar
-              {menuOpen === 'edit' && (
-                <div className="menu-dropdown">
-                  <div className="menu-dropdown-item" onClick={() => { setSidebarVisible(v => !v); setMenuOpen(null) }}>
-                    Toggle Sidebar <span className="shortcut">B</span>
-                  </div>
-                  <div className="menu-dropdown-item" onClick={() => { setShowCommand(true); setMenuOpen(null) }}>
-                    Command Palette <span className="shortcut">Ctrl+K</span>
-                  </div>
-                  <div className="menu-dropdown-divider" />
-                  <div className="menu-dropdown-item" onClick={() => { if (defaults) { updateConfig(defaults); setMenuOpen(null) } }}>
-                    Resetar Config
-                  </div>
-                </div>
-              )}
-            </div>
-            <div
-              className={`menu-item ${menuOpen === 'help' ? 'open' : ''}`}
-              onClick={() => setMenuOpen(menuOpen === 'help' ? null : 'help')}
-            >
-              Ajuda
-              {menuOpen === 'help' && (
-                <div className="menu-dropdown">
-                  <div className="menu-dropdown-item" onClick={() => { setShowShortcuts(true); setMenuOpen(null) }}>
-                    Atalhos de Teclado <span className="shortcut">Ctrl+/</span>
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="topbar-right">
-          <button className="topbar-cmd-btn" onClick={() => setShowCommand(true)} title="Command Palette (Ctrl+K)">
+        <div className="flex items-center gap-2">
+          <button className="flex items-center gap-2 px-3 py-1 bg-bg-elevated border border-border rounded-md text-[11px] text-text-muted hover:border-border-light transition-all" onClick={() => setShowCommand(true)} title="Command Palette (Ctrl+K)">
             <Command size={12} />
             <span>Buscar...</span>
-            <kbd className="topbar-cmd-kbd">Ctrl K</kbd>
+            <kbd className="text-[9px] text-text-muted bg-bg px-1.5 py-0.5 rounded border border-border">Ctrl K</kbd>
           </button>
           {processing && (
-            <div className="topbar-processing">
-              <Loader2 size={12} className="spin" />
-              {step || 'Processando...'}
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-accent/10 rounded-md text-[11px] text-accent-light">
+              <Loader2 size={12} className="animate-spin" />
+              <span className="max-w-[120px] truncate">{step || 'Processando...'}</span>
             </div>
           )}
-          <div className="topbar-connection">
-            <div className={`connection-dot ${wsConnected ? '' : 'off'}`} />
-            <span>{wsConnected ? 'Online' : 'Offline'}</span>
+          <div className="flex items-center gap-1.5 px-2 py-1">
+            <div className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-success animate-pulse' : 'bg-danger'}`} />
+            <span className="text-[10px] text-text-muted">{wsConnected ? 'Online' : 'Offline'}</span>
           </div>
         </div>
       </div>
 
-      <div className="workspace">
+      {/* Workspace */}
+      <div className="flex flex-1 overflow-hidden">
         {sidebarVisible && (
           <>
-            <div className="sidebar" style={{ width: sidebarWidth }}>
+            <div className="overflow-y-auto border-r border-border bg-bg-secondary" style={{ width: sidebarWidth }}>
               <ConfigPanel
                 config={config}
                 defaults={defaults}
@@ -441,49 +453,48 @@ export default function App() {
             </div>
             <div
               ref={resizeRef}
-              className="sidebar-resize-handle"
+              className="w-1 cursor-col-resize hover:bg-accent transition-colors shrink-0"
               onMouseDown={handleSidebarResize}
             />
           </>
         )}
 
-        <div className="main-content">
-          <div className="main-tabs">
-            <button
-              className={`main-tab ${activeMainTab === 'import' ? 'active' : ''}`}
-              onClick={() => setActiveMainTab('import')}
-            >
-              <Film className="main-tab-icon" /> Importar
-            </button>
-            <button
-              className={`main-tab ${activeMainTab === 'cuts' ? 'active' : ''}`}
-              onClick={() => setActiveMainTab('cuts')}
-            >
-              <Scissors className="main-tab-icon" /> Cortes
-              {cuts.length > 0 && <span className="main-tab-badge">{cuts.length}</span>}
-            </button>
-            {editingCut && (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Tabs */}
+          <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-border bg-bg-secondary shrink-0">
+            {[
+              { key: 'import', label: 'Importar', icon: Film, badge: null },
+              { key: 'cuts', label: 'Cortes', icon: Scissors, badge: cuts.length > 0 ? cuts.length : null },
+              ...(editingCut ? [{ key: 'editor', label: 'Editor', icon: MonitorPlay, badge: null }] : []),
+            ].map(tab => (
               <button
-                className={`main-tab ${activeMainTab === 'editor' ? 'active' : ''}`}
-                onClick={() => setActiveMainTab('editor')}
+                key={tab.key}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${activeMainTab === tab.key ? 'bg-bg-tertiary text-text' : 'text-text-secondary hover:text-text hover:bg-bg-hover'}`}
+                onClick={() => setActiveMainTab(tab.key)}
               >
-                <MonitorPlay className="main-tab-icon" /> Editor
+                <tab.icon size={13} /> {tab.label}
+                {tab.badge !== null && (
+                  <span className="text-[9px] font-bold bg-accent text-white px-1.5 py-0.5 rounded min-w-[16px] text-center">{tab.badge}</span>
+                )}
               </button>
-            )}
+            ))}
           </div>
 
-          <div className="main-body">
+          {/* Main body */}
+          <div className="flex-1 overflow-hidden">
             {activeMainTab === 'import' && (
-              <ProcessingPanel
-                onStart={startProcess}
-                onUpload={uploadVideo}
-                processing={processing}
-                progress={progress}
-                step={step}
-                error={error}
-                pipeline={pipeline}
-                onCancel={handleCancelProcess}
-              />
+              <div className="h-full overflow-y-auto p-4">
+                <ProcessingPanel
+                  onStart={startProcess}
+                  onUpload={uploadVideo}
+                  processing={processing}
+                  progress={progress}
+                  step={step}
+                  error={error}
+                  pipeline={pipeline}
+                  onCancel={handleCancelProcess}
+                />
+              </div>
             )}
 
             {activeMainTab === 'cuts' && (
@@ -495,64 +506,74 @@ export default function App() {
             )}
 
             {activeMainTab === 'editor' && editingCut && (
-              <Suspense fallback={<div className="editor-preview-placeholder">Carregando editor...</div>}>
-              <VideoEditor
-                cut={editingCut}
-                config={config}
-                onRerender={handleRerender}
-                onClose={() => { setEditingCut(null); setActiveMainTab('cuts') }}
-                processing={processing}
-              />
+              <Suspense fallback={<div className="flex items-center justify-center h-full text-xs text-text-muted">Carregando editor...</div>}>
+                <VideoEditor
+                  cut={editingCut}
+                  config={config}
+                  onRerender={handleRerender}
+                  onClose={() => { setEditingCut(null); setActiveMainTab('cuts') }}
+                  processing={processing}
+                />
               </Suspense>
             )}
           </div>
         </div>
       </div>
 
-      <div className="statusbar">
-        <div className="statusbar-item">
-          <div className={`connection-dot ${wsConnected ? '' : 'off'}`} />
+      {/* Statusbar */}
+      <div className="flex items-center gap-3 px-3 py-1 border-t border-border bg-bg-secondary text-[10px] text-text-muted shrink-0">
+        <div className="flex items-center gap-1.5">
+          <div className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-success' : 'bg-danger'}`} />
           <span>{wsConnected ? 'WS conectado' : 'Reconectando...'}</span>
         </div>
-        <div className="statusbar-divider" />
-        <div className="statusbar-item">
+        <div className="w-px h-3 bg-border" />
+        <div className="flex items-center gap-1.5">
           <Scissors size={10} />
           <span>{cuts.length} cortes</span>
         </div>
-        <div className="statusbar-divider" />
-        <div className="statusbar-item">
+        <div className="w-px h-3 bg-border" />
+        <div className="flex items-center gap-1.5">
           <Tv size={10} />
           <span>{processing ? step || 'Processando...' : 'Pronto'}</span>
         </div>
-        <span className="statusbar-right">Fala Tu v1.0</span>
+        <span className="ml-auto">Fala Tu v1.0</span>
       </div>
 
+      {/* Shortcuts modal */}
       {showShortcuts && (
-        <div className="modal-overlay" onClick={() => setShowShortcuts(false)}>
-          <div className="modal-content shortcuts-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Atalhos de Teclado</span>
-              <button className="modal-close" onClick={() => setShowShortcuts(false)}>Esc</button>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center" style={{ animation: 'modal-fade 150ms ease' }} onClick={() => setShowShortcuts(false)}>
+          <div className="bg-bg-secondary border border-border-light rounded-xl shadow-2xl w-[90%] max-w-[500px]" style={{ animation: 'modal-slide 200ms ease' }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <span className="text-sm font-semibold text-text">Atalhos de Teclado</span>
+              <button className="px-2 py-0.5 text-[10px] text-text-muted bg-bg-elevated border border-border rounded hover:text-text" onClick={() => setShowShortcuts(false)}>Esc</button>
             </div>
-            <div className="shortcuts-grid">
-              <div className="shortcut-category">
-                <div className="shortcut-category-title">Navegacao</div>
-                <div className="shortcut-row"><span>Importar</span><kbd>1</kbd></div>
-                <div className="shortcut-row"><span>Cortes</span><kbd>2</kbd></div>
-                <div className="shortcut-row"><span>Editor</span><kbd>3</kbd></div>
-                <div className="shortcut-row"><span>Toggle Sidebar</span><kbd>B</kbd></div>
+            <div className="grid grid-cols-2 gap-6 p-4">
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wide text-text-muted mb-2">Navegacao</div>
+                {[
+                  ['Importar', '1'], ['Cortes', '2'], ['Editor', '3'], ['Toggle Sidebar', 'B'],
+                ].map(([label, key]) => (
+                  <div key={label} className="flex items-center justify-between py-1 text-xs text-text-secondary">
+                    <span>{label}</span><kbd className="text-[9px] bg-bg-elevated border border-border px-1.5 py-0.5 rounded">{key}</kbd>
+                  </div>
+                ))}
               </div>
-              <div className="shortcut-category">
-                <div className="shortcut-category-title">Ferramentas</div>
-                <div className="shortcut-row"><span>Command Palette</span><kbd>Ctrl K</kbd></div>
-                <div className="shortcut-row"><span>Atalhos</span><kbd>Ctrl /</kbd></div>
-                <div className="shortcut-row"><span>Fechar modal</span><kbd>Esc</kbd></div>
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wide text-text-muted mb-2">Ferramentas</div>
+                {[
+                  ['Command Palette', 'Ctrl K'], ['Atalhos', 'Ctrl /'], ['Fechar modal', 'Esc'],
+                ].map(([label, key]) => (
+                  <div key={label} className="flex items-center justify-between py-1 text-xs text-text-secondary">
+                    <span>{label}</span><kbd className="text-[9px] bg-bg-elevated border border-border px-1.5 py-0.5 rounded">{key}</kbd>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* Command palette */}
       {showCommand && (
         <CommandPalette
           cuts={cuts}
@@ -564,7 +585,8 @@ export default function App() {
         />
       )}
 
-      <div className="toast-container">
+      {/* Toasts */}
+      <div className="fixed bottom-8 right-4 z-[999] flex flex-col gap-2">
         {toasts.map(t => (
           <Toast key={t.id} toast={t} onRemove={removeToast} />
         ))}
