@@ -1,28 +1,19 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Play, Square, Pencil, Download, Scissors,
   Clock, HardDrive, Film, Search, ArrowUpDown,
   Copy, FolderOpen, LayoutGrid, List,
 } from 'lucide-react'
 
-
-
 function CutThumbnail({ src }) {
-  const [thumbUrl, setThumbUrl] = useState(null)
   const [failed, setFailed] = useState(false)
-
   return (
-    <div className="cut-row-thumb">
+    <div className="w-11 h-7 rounded bg-bg overflow-hidden shrink-0 flex items-center justify-center border border-border">
       {!failed ? (
-        <img
-          src={src}
-          alt=""
-          loading="lazy"
-          onError={() => setFailed(true)}
-          onLoad={(e) => setThumbUrl(e.target.src)}
-        />
+        <img src={src} alt="" loading="lazy" onError={() => setFailed(true)}
+          className="w-full h-full object-cover" />
       ) : (
-        <Film className="cut-row-thumb-placeholder" size={16} />
+        <Film size={16} className="text-text-muted" />
       )}
     </div>
   )
@@ -38,10 +29,7 @@ function groupByFolder(cuts) {
   const order = []
   for (const cut of cuts) {
     const key = cut.pasta || ''
-    if (!groups[key]) {
-      groups[key] = []
-      order.push(key)
-    }
+    if (!groups[key]) { groups[key] = []; order.push(key) }
     groups[key].push(cut)
   }
   return { groups, order }
@@ -50,27 +38,26 @@ function groupByFolder(cuts) {
 function CutRow({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onToggle, onContextMenu }) {
   return (
     <div
-      className={`cut-row fade-in ${isPlaying ? 'playing' : ''} ${isSelected ? 'selected' : ''}`}
+      className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-all border ${isPlaying ? 'border-success bg-success/10 shadow-[0_0_8px_rgba(16,185,129,0.15)]' : isSelected ? 'border-accent bg-accent/10' : 'bg-bg-elevated border-border hover:border-border-light hover:bg-bg-hover'}`}
+      style={{ animation: 'fade-in 0.2s ease forwards' }}
       onContextMenu={onContextMenu}
     >
-      <input type="checkbox" className="cut-row-checkbox" checked={isSelected} onChange={onToggle} />
+      <input type="checkbox" className="w-3 h-3 accent-accent cursor-pointer shrink-0" checked={isSelected} onChange={onToggle} />
       <CutThumbnail src={`/api/cuts/${cut.arquivo}/thumb`} />
-      <div className="cut-row-left">
-        <div className="cut-row-info">
-          <div className="cut-row-title">{cut.titulo}</div>
-          <div className="cut-row-meta">
-            {cut.duracao && <span><Clock size={10} /> {Math.round(cut.duracao)}s</span>}
-            {cut.tamanho_mb && <span><HardDrive size={10} /> {cut.tamanho_mb} MB</span>}
-          </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-medium text-text truncate">{cut.titulo}</div>
+        <div className="flex items-center gap-2.5 mt-0.5">
+          {cut.duracao && <span className="flex items-center gap-1 text-[10px] text-text-muted"><Clock size={9} /> {Math.round(cut.duracao)}s</span>}
+          {cut.tamanho_mb && <span className="flex items-center gap-1 text-[10px] text-text-muted"><HardDrive size={9} /> {cut.tamanho_mb} MB</span>}
         </div>
       </div>
-      {cut._new && <span className="new-badge">NOVO</span>}
-      <div className="cut-row-actions">
-        <button className="btn-icon cut-row-btn" onClick={onPlay} title={isPlaying ? 'Parar' : 'Preview'}>
+      {cut._new && <span className="text-[9px] font-bold text-success bg-success/15 px-1.5 py-0.5 rounded shrink-0 border border-success/30">NOVO</span>}
+      <div className="flex items-center gap-0.5 shrink-0">
+        <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onPlay} title={isPlaying ? 'Parar' : 'Preview'}>
           {isPlaying ? <Square size={13} /> : <Play size={13} />}
         </button>
-        <button className="btn-icon cut-row-btn" onClick={onEdit} title="Editar"><Pencil size={13} /></button>
-        <button className="btn-icon cut-row-btn" onClick={onDownload} title="Download"><Download size={13} /></button>
+        <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onEdit} title="Editar"><Pencil size={13} /></button>
+        <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onDownload} title="Download"><Download size={13} /></button>
       </div>
     </div>
   )
@@ -79,28 +66,27 @@ function CutRow({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onTogg
 function CutCard({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onToggle, onContextMenu }) {
   return (
     <div
-      className={`cut-card fade-in ${isPlaying ? 'playing' : ''} ${isSelected ? 'selected' : ''}`}
+      className={`rounded-lg overflow-hidden cursor-pointer transition-all border ${isPlaying ? 'border-success shadow-[0_0_8px_rgba(16,185,129,0.15)]' : isSelected ? 'border-accent' : 'bg-bg-elevated border-border hover:border-border-light'}`}
+      style={{ animation: 'fade-in 0.2s ease forwards' }}
       onContextMenu={onContextMenu}
     >
-      <div className="cut-card-thumb" onClick={onPlay}>
+      <div className="relative aspect-video bg-bg overflow-hidden group" onClick={onPlay}>
         <CutThumbnail src={`/api/cuts/${cut.arquivo}/thumb`} />
-        <div className="cut-card-overlay">
-          <button className="cut-card-play" title="Preview">
-            {isPlaying ? <Square size={18} /> : <Play size={18} />}
-          </button>
+        <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="w-10 h-10 rounded-full bg-accent/80 flex items-center justify-center">
+            {isPlaying ? <Square size={18} className="text-white" /> : <Play size={18} className="text-white" />}
+          </div>
         </div>
         {cut.duracao && (
-          <span className="cut-card-duration">{Math.round(cut.duracao)}s</span>
+          <span className="absolute bottom-1.5 right-1.5 text-[9px] text-white bg-black/70 px-1.5 py-0.5 rounded">{Math.round(cut.duracao)}s</span>
         )}
-        {cut._new && <span className="cut-card-new">NOVO</span>}
+        {cut._new && <span className="absolute top-1.5 left-1.5 text-[9px] font-bold text-success bg-success/20 px-1.5 py-0.5 rounded border border-success/40">NOVO</span>}
       </div>
-      <div className="cut-card-body">
-        <div className="cut-card-title" title={cut.titulo}>{cut.titulo}</div>
-        <div className="cut-card-actions">
-          <input type="checkbox" className="cut-row-checkbox" checked={isSelected} onChange={onToggle} />
-          <button className="btn-icon cut-card-btn" onClick={onEdit} title="Editar"><Pencil size={13} /></button>
-          <button className="btn-icon cut-card-btn" onClick={onDownload} title="Download"><Download size={13} /></button>
-        </div>
+      <div className="p-2 flex items-center gap-1.5">
+        <div className="text-xs font-medium text-text truncate flex-1" title={cut.titulo}>{cut.titulo}</div>
+        <input type="checkbox" className="w-3 h-3 accent-accent cursor-pointer shrink-0" checked={isSelected} onChange={onToggle} />
+        <button className="flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onEdit} title="Editar"><Pencil size={12} /></button>
+        <button className="flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onDownload} title="Download"><Download size={12} /></button>
       </div>
     </div>
   )
@@ -124,48 +110,25 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
     return () => window.removeEventListener('click', handleClick)
   }, [])
 
-  function handlePlay(cut) {
-    setPlayingId(playingId === cut.arquivo ? null : cut.arquivo)
-  }
-
+  function handlePlay(cut) { setPlayingId(playingId === cut.arquivo ? null : cut.arquivo) }
   function handleDownload(cut) {
     const a = document.createElement('a')
     a.href = `/api/cuts/${cut.arquivo}/download`
     a.download = cut.arquivo
     a.click()
   }
-
-  function handleCopyTitle(cut) {
-    navigator.clipboard?.writeText(cut.titulo || '')
-  }
+  function handleCopyTitle(cut) { navigator.clipboard?.writeText(cut.titulo || '') }
 
   function toggleSelect(id) {
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    setSelectedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
   }
-
-  function toggleSelectAll(cutList) {
-    const allSelected = cutList.every(c => selectedIds.has(c.arquivo))
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      cutList.forEach(c => { allSelected ? next.delete(c.arquivo) : next.add(c.arquivo) })
-      return next
-    })
-  }
-
   function batchDownload(cutList) {
     cutList.filter(c => selectedIds.has(c.arquivo)).forEach(c => handleDownload(c))
   }
-
   function handleSort(field) {
     if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortBy(field); setSortDir('desc') }
   }
-
   function handleContextMenu(e, cut) {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY })
@@ -173,22 +136,14 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
   }
 
   const { groups, order } = groupByFolder(cuts || [])
-  const hasFolders = order.length > 1 || (order.length === 1 && order[0] !== '')
-
   const filteredFolders = folderSearch
     ? order.filter(k => prettyFolderName(k).toLowerCase().includes(folderSearch.toLowerCase()))
     : order
 
-  let displayCuts = selectedFolder !== null
-    ? (groups[selectedFolder] || [])
-    : cuts
-
+  let displayCuts = selectedFolder !== null ? (groups[selectedFolder] || []) : cuts
   if (searchQuery) {
-    displayCuts = displayCuts.filter(c =>
-      (c.titulo || '').toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    displayCuts = displayCuts.filter(c => (c.titulo || '').toLowerCase().includes(searchQuery.toLowerCase()))
   }
-
   if (sortBy !== 'none') {
     displayCuts = [...displayCuts].sort((a, b) => {
       let va, vb
@@ -203,28 +158,28 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
 
   if (!cuts || cuts.length === 0) {
     return (
-      <div className="panel">
-        <div className="panel-header">
-          <div className="panel-header-left">
-            <Scissors className="panel-icon" />
-            <span className="panel-title">Cortes Gerados</span>
+      <div className="bg-bg-tertiary border border-border rounded-xl overflow-hidden flex flex-col h-full">
+        <div className="flex items-center px-4 py-3 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <Scissors size={14} className="text-accent-light" />
+            <span className="text-xs font-semibold text-text">Cortes Gerados</span>
           </div>
         </div>
-        <div className="empty-state-rich">
-          <svg className="empty-state-svg" width="120" height="90" viewBox="0 0 120 90" fill="none">
-            <rect x="15" y="15" width="90" height="56" rx="6" stroke="var(--border-light)" strokeWidth="1.5" fill="var(--bg-elevated)" />
-            <path d="M15 30 L105 30" stroke="var(--border)" strokeWidth="1" />
-            <circle cx="20" cy="22" r="1.5" fill="var(--danger)" />
-            <circle cx="25" cy="22" r="1.5" fill="var(--warning)" />
-            <circle cx="30" cy="22" r="1.5" fill="var(--success)" />
-            <path d="M45 45 L45 55 M40 50 L50 50" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" className="empty-state-pulse" />
-            <rect x="60" y="42" width="30" height="3" rx="1.5" fill="var(--border-light)" />
-            <rect x="60" y="50" width="20" height="3" rx="1.5" fill="var(--border)" />
-            <path d="M55 71 L55 78 M60 71 L60 78 M65 71 L65 78" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" />
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 py-12">
+          <svg width="120" height="90" viewBox="0 0 120 90" fill="none">
+            <rect x="15" y="15" width="90" height="56" rx="6" stroke="#3f3f46" strokeWidth="1.5" fill="#1c1c21" />
+            <path d="M15 30 L105 30" stroke="#27272a" strokeWidth="1" />
+            <circle cx="20" cy="22" r="1.5" fill="#ef4444" />
+            <circle cx="25" cy="22" r="1.5" fill="#f59e0b" />
+            <circle cx="30" cy="22" r="1.5" fill="#10b981" />
+            <path d="M45 45 L45 55 M40 50 L50 50" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" className="animate-pulse" />
+            <rect x="60" y="42" width="30" height="3" rx="1.5" fill="#3f3f46" />
+            <rect x="60" y="50" width="20" height="3" rx="1.5" fill="#27272a" />
+            <path d="M55 71 L55 78 M60 71 L60 78 M65 71 L65 78" stroke="#27272a" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <div className="empty-state-title">Nenhum corte gerado</div>
-          <div className="empty-state-text">Importe e processe um video para gerar cortes automaticamente com IA</div>
-          <button className="btn btn-primary empty-state-action" onClick={onGoImport}>
+          <div className="text-sm font-semibold text-text">Nenhum corte gerado</div>
+          <div className="text-xs text-text-muted text-center max-w-xs">Importe e processe um video para gerar cortes automaticamente com IA</div>
+          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-md text-xs font-medium hover:bg-accent-hover transition-all" onClick={onGoImport}>
             <Film size={14} /> Importar Video
           </button>
         </div>
@@ -233,140 +188,128 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
   }
 
   return (
-    <div className="cuts-browser">
-      <div className="cuts-sidebar">
-        <div className="cuts-sidebar-header">
-          <span className="cuts-sidebar-title">Lives</span>
-          <span className="panel-badge">{order.length}</span>
+    <div className="flex h-full overflow-hidden bg-bg-tertiary">
+      {/* Sidebar */}
+      <div className="w-52 shrink-0 border-r border-border flex flex-col bg-bg-secondary">
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-border shrink-0">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-text-muted">Lives</span>
+          <span className="text-[10px] font-bold text-accent-light bg-accent/10 px-1.5 py-0.5 rounded border border-accent/20 min-w-[18px] text-center">{order.length}</span>
         </div>
-        <input className="cuts-folder-search" type="text" placeholder="Buscar live..."
+        <input className="mx-2.5 my-2 px-2.5 py-1.5 bg-bg-elevated border border-border rounded-md text-[11px] text-text outline-none focus:border-accent" type="text" placeholder="Buscar live..."
           value={folderSearch} onChange={(e) => setFolderSearch(e.target.value)} />
-        <div className="cuts-sidebar-list">
+        <div className="flex-1 overflow-y-auto px-1.5 pb-2 flex flex-col gap-0.5">
           <div
-            className={`cuts-sidebar-item ${selectedFolder === null ? 'active' : ''}`}
+            className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-[11px] transition-colors border ${selectedFolder === null ? 'bg-accent/15 text-accent-light border-accent/30' : 'text-text-secondary hover:bg-bg-hover hover:text-text border-transparent'}`}
             onClick={() => setSelectedFolder(null)}
           >
-            <Film size={14} />
-            <span className="cuts-sidebar-item-name">Todos os cortes</span>
-            <span className="cuts-sidebar-item-count">{cuts.length}</span>
+            <Film size={13} className="shrink-0" />
+            <span className="flex-1 truncate">Todos os cortes</span>
+            <span className="text-[10px] text-text-muted">{cuts.length}</span>
           </div>
           {filteredFolders.map(folderKey => (
             <div
               key={folderKey}
-              className={`cuts-sidebar-item ${selectedFolder === folderKey ? 'active' : ''}`}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-[11px] transition-colors border ${selectedFolder === folderKey ? 'bg-accent/15 text-accent-light border-accent/30' : 'text-text-secondary hover:bg-bg-hover hover:text-text border-transparent'}`}
               onClick={() => setSelectedFolder(folderKey)}
             >
-              <FolderOpen size={14} />
-              <span className="cuts-sidebar-item-name">{prettyFolderName(folderKey)}</span>
-              <span className="cuts-sidebar-item-count">{groups[folderKey].length}</span>
+              <FolderOpen size={13} className="shrink-0" />
+              <span className="flex-1 truncate">{prettyFolderName(folderKey)}</span>
+              <span className="text-[10px] text-text-muted">{groups[folderKey].length}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="cuts-main">
-        <div className="cuts-main-header">
-          <div className="cuts-toolbar">
-            <input className="cuts-search" type="text" placeholder="Buscar cortes..."
-              value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-            <button className={`cuts-sort-btn ${sortBy === 'score' ? 'active' : ''}`} onClick={() => handleSort('score')}>
-              <ArrowUpDown size={10} /> Score
+      {/* Main */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex items-center gap-2 px-3.5 pt-2.5 pb-0 shrink-0 flex-wrap">
+          <input className="flex-1 min-w-[120px] px-2.5 py-1.5 bg-bg-elevated border border-border rounded-md text-xs text-text outline-none focus:border-accent" type="text" placeholder="Buscar cortes..."
+            value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          {[
+            { key: 'score', label: 'Score' },
+            { key: 'duracao', label: 'Duracao' },
+            { key: 'titulo', label: 'Titulo' },
+          ].map(s => (
+            <button key={s.key}
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-[10px] font-medium transition-all border ${sortBy === s.key ? 'bg-accent text-white border-accent' : 'bg-bg-elevated border-border text-text-secondary hover:text-text hover:border-border-light'}`}
+              onClick={() => handleSort(s.key)}
+            >
+              <ArrowUpDown size={10} /> {s.label}
             </button>
-            <button className={`cuts-sort-btn ${sortBy === 'duracao' ? 'active' : ''}`} onClick={() => handleSort('duracao')}>
-              <ArrowUpDown size={10} /> Duracao
+          ))}
+          <div className="flex bg-bg-elevated border border-border rounded-md p-0.5">
+            <button className={`flex items-center justify-center w-7 h-6 rounded transition-all ${viewMode === 'list' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text'}`}
+              onClick={() => { setViewMode('list'); localStorage.setItem('dcb-view', 'list') }} title="Lista">
+              <List size={13} />
             </button>
-            <button className={`cuts-sort-btn ${sortBy === 'titulo' ? 'active' : ''}`} onClick={() => handleSort('titulo')}>
-              <ArrowUpDown size={10} /> Titulo
+            <button className={`flex items-center justify-center w-7 h-6 rounded transition-all ${viewMode === 'grid' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text'}`}
+              onClick={() => { setViewMode('grid'); localStorage.setItem('dcb-view', 'grid') }} title="Grid">
+              <LayoutGrid size={13} />
             </button>
-            <div className="cuts-view-toggle">
-              <button className={`cuts-view-btn ${viewMode === 'list' ? 'active' : ''}`}
-                onClick={() => { setViewMode('list'); localStorage.setItem('dcb-view', 'list') }}
-                title="Lista">
-                <List size={14} />
-              </button>
-              <button className={`cuts-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
-                onClick={() => { setViewMode('grid'); localStorage.setItem('dcb-view', 'grid') }}
-                title="Grid">
-                <LayoutGrid size={14} />
-              </button>
-            </div>
           </div>
-
           {selectedIds.size > 0 && (
-            <div className="cuts-batch-actions">
-              {selectedIds.size} selecionado(s)
-              <button onClick={() => batchDownload(displayCuts)}>Baixar selecionados</button>
-              <button onClick={() => setSelectedIds(new Set())}>Desselecionar</button>
+            <div className="flex items-center gap-2 ml-auto text-[11px]">
+              <span className="text-text-secondary">{selectedIds.size} selecionado(s)</span>
+              <button className="px-2 py-1 bg-accent text-white rounded text-[10px] font-medium hover:bg-accent-hover transition-all" onClick={() => batchDownload(displayCuts)}>Baixar selecionados</button>
+              <button className="px-2 py-1 bg-bg-elevated border border-border text-text-secondary rounded text-[10px] font-medium hover:text-text hover:bg-bg-hover transition-all" onClick={() => setSelectedIds(new Set())}>Desselecionar</button>
             </div>
           )}
         </div>
 
-        <div className="cuts-main-body">
+        <div className="flex-1 overflow-y-auto p-3.5 flex flex-col gap-1">
           {displayCuts.length === 0 ? (
-            <div className="cuts-main-empty">
-              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style={{ marginBottom: 8 }}>
-                <circle cx="20" cy="20" r="14" stroke="var(--border-light)" strokeWidth="2" />
-                <path d="M30 30 L40 40" stroke="var(--border-light)" strokeWidth="2" strokeLinecap="round" />
-                <path d="M15 20 L25 20 M20 15 L20 25" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" />
+            <div className="flex flex-col items-center justify-center py-12 text-text-muted">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-2">
+                <circle cx="20" cy="20" r="14" stroke="#3f3f46" strokeWidth="2" />
+                <path d="M30 30 L40 40" stroke="#3f3f46" strokeWidth="2" strokeLinecap="round" />
+                <path d="M15 20 L25 20 M20 15 L20 25" stroke="#6b6b76" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
-              <span>Nenhum corte encontrado</span>
+              <span className="text-xs">Nenhum corte encontrado</span>
             </div>
           ) : viewMode === 'grid' ? (
-            <div className="cuts-grid">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2.5">
               {displayCuts.map((cut) => (
-                <CutCard
-                  key={cut.arquivo}
-                  cut={cut}
-                  isPlaying={playingId === cut.arquivo}
-                  isSelected={selectedIds.has(cut.arquivo)}
-                  onPlay={() => handlePlay(cut)}
-                  onEdit={() => onEdit(cut)}
-                  onDownload={() => handleDownload(cut)}
-                  onToggle={() => toggleSelect(cut.arquivo)}
-                  onContextMenu={(e) => handleContextMenu(e, cut)}
-                />
+                <CutCard key={cut.arquivo} cut={cut}
+                  isPlaying={playingId === cut.arquivo} isSelected={selectedIds.has(cut.arquivo)}
+                  onPlay={() => handlePlay(cut)} onEdit={() => onEdit(cut)} onDownload={() => handleDownload(cut)}
+                  onToggle={() => toggleSelect(cut.arquivo)} onContextMenu={(e) => handleContextMenu(e, cut)} />
               ))}
             </div>
           ) : (
-            <div className="cuts-list">
+            <div className="flex flex-col gap-1">
               {displayCuts.map((cut) => (
-                <CutRow
-                  key={cut.arquivo}
-                  cut={cut}
-                  isPlaying={playingId === cut.arquivo}
-                  isSelected={selectedIds.has(cut.arquivo)}
-                  onPlay={() => handlePlay(cut)}
-                  onEdit={() => onEdit(cut)}
-                  onDownload={() => handleDownload(cut)}
-                  onToggle={() => toggleSelect(cut.arquivo)}
-                  onContextMenu={(e) => handleContextMenu(e, cut)}
-                />
+                <CutRow key={cut.arquivo} cut={cut}
+                  isPlaying={playingId === cut.arquivo} isSelected={selectedIds.has(cut.arquivo)}
+                  onPlay={() => handlePlay(cut)} onEdit={() => onEdit(cut)} onDownload={() => handleDownload(cut)}
+                  onToggle={() => toggleSelect(cut.arquivo)} onContextMenu={(e) => handleContextMenu(e, cut)} />
               ))}
             </div>
           )}
 
           {playingId && (
-            <div className="cuts-player fade-in">
-              <video src={`/api/cuts/${playingId}`} controls autoPlay onEnded={() => setPlayingId(null)} />
+            <div className="fixed bottom-12 right-4 z-50 bg-bg-secondary border border-border-light rounded-lg overflow-hidden shadow-2xl" style={{ animation: 'fade-in 0.2s ease forwards' }}>
+              <video src={`/api/cuts/${playingId}`} controls autoPlay onEnded={() => setPlayingId(null)} className="w-[270px] max-h-[480px]" />
             </div>
           )}
         </div>
       </div>
 
       {contextMenu && contextCut && (
-        <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }}
+        <div className="fixed z-[999] bg-bg-secondary border border-border-light rounded-lg shadow-2xl py-1 min-w-[160px]" style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}>
-          <div className="context-menu-item" onClick={() => { handlePlay(contextCut); setContextMenu(null) }}>
-            <Play size={13} /> {playingId === contextCut.arquivo ? 'Parar' : 'Preview'}
-          </div>
-          <div className="context-menu-item" onClick={() => { onEdit(contextCut); setContextMenu(null) }}>
-            <Pencil size={13} /> Editar legenda
-          </div>
-          <div className="context-menu-item" onClick={() => { handleDownload(contextCut); setContextMenu(null) }}>
-            <Download size={13} /> Download
-          </div>
-          <div className="context-menu-divider" />
-          <div className="context-menu-item" onClick={() => { handleCopyTitle(contextCut); setContextMenu(null) }}>
+          {[
+            { icon: Play, label: playingId === contextCut.arquivo ? 'Parar' : 'Preview', action: () => { handlePlay(contextCut); setContextMenu(null) } },
+            { icon: Pencil, label: 'Editar legenda', action: () => { onEdit(contextCut); setContextMenu(null) } },
+            { icon: Download, label: 'Download', action: () => { handleDownload(contextCut); setContextMenu(null) } },
+          ].map((item, i) => (
+            <div key={i} className="flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:text-text hover:bg-bg-hover cursor-pointer transition-colors"
+              onClick={item.action}>
+              <item.icon size={13} /> {item.label}
+            </div>
+          ))}
+          <div className="h-px bg-border my-1" />
+          <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:text-text hover:bg-bg-hover cursor-pointer transition-colors"
+            onClick={() => { handleCopyTitle(contextCut); setContextMenu(null) }}>
             <Copy size={13} /> Copiar titulo
           </div>
         </div>

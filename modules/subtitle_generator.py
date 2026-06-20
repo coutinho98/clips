@@ -9,7 +9,36 @@ REELS_MAX_DURACAO = 999
 FONT_SIZE = 52
 MAX_CHARS_PER_LINE = 35
 TEXT_MARGIN_BOTTOM = 180
-FONT_PATH = "/usr/share/fonts/opentype/fira/FiraSans-SemiBold.otf"
+
+_FONT_DIR = os.path.expanduser("~/.local/share/fonts/subtitle-fonts")
+
+FONT_REGISTRY = {
+    "fira-sans":           {"path": "/usr/share/fonts/opentype/fira/FiraSans-SemiBold.otf",            "ass_name": "FiraSans-SemiBold"},
+    "fira-condensed":      {"path": "/usr/share/fonts/opentype/fira/FiraSansCondensed-Bold.otf",      "ass_name": "FiraSansCondensed-Bold"},
+    "fira-compressed":     {"path": "/usr/share/fonts/opentype/fira/FiraSansCompressed-Bold.otf",     "ass_name": "FiraSansCompressed-Bold"},
+    "open-sans":           {"path": "/usr/share/fonts/truetype/open-sans/OpenSans-Bold.ttf",           "ass_name": "OpenSans-Bold"},
+    "roboto-slab":         {"path": "/usr/share/fonts/truetype/roboto-slab/RobotoSlab-Bold.ttf",      "ass_name": "RobotoSlab-Bold"},
+    "anton":               {"path": f"{_FONT_DIR}/Anton-Regular.ttf",       "ass_name": "Anton"},
+    "bebas-neue":          {"path": f"{_FONT_DIR}/BebasNeue-Regular.ttf",   "ass_name": "Bebas Neue"},
+    "league-spartan":      {"path": f"{_FONT_DIR}/LeagueSpartan.ttf",       "ass_name": "League Spartan"},
+    "oswald":              {"path": f"{_FONT_DIR}/Oswald.ttf",              "ass_name": "Oswald"},
+    "teko":                {"path": f"{_FONT_DIR}/Teko.ttf",                "ass_name": "Teko"},
+    "montserrat":          {"path": f"{_FONT_DIR}/Montserrat.ttf",          "ass_name": "Montserrat"},
+    "poppins":             {"path": f"{_FONT_DIR}/Poppins-Bold.ttf",        "ass_name": "Poppins"},
+    "rubik":               {"path": f"{_FONT_DIR}/Rubik.ttf",               "ass_name": "Rubik"},
+    "raleway":             {"path": f"{_FONT_DIR}/Raleway.ttf",             "ass_name": "Raleway"},
+}
+FONT_ID = "fira-sans"
+FONT_PATH = FONT_REGISTRY[FONT_ID]["path"]
+FONT_ASS_NAME = FONT_REGISTRY[FONT_ID]["ass_name"]
+
+def set_font(font_id):
+    global FONT_ID, FONT_PATH, FONT_ASS_NAME
+    entry = FONT_REGISTRY.get(font_id, FONT_REGISTRY["fira-sans"])
+    FONT_ID = font_id
+    FONT_PATH = entry["path"]
+    FONT_ASS_NAME = entry["ass_name"]
+
 BASE_COLOR = "#B4B4B4"
 HIGHLIGHT_COLOR = "#FFFF32"
 
@@ -116,6 +145,7 @@ def _build_ass_header(video_w, video_h):
     margin_v = TEXT_MARGIN_BOTTOM
     base_ass = _hex_to_ass(BASE_COLOR)
     hl_ass = _hex_to_ass(HIGHLIGHT_COLOR)
+    fn = FONT_ASS_NAME
     return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {video_w}
@@ -125,12 +155,16 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Base,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
-Style: Karaoke,FiraSans-SemiBold,{FONT_SIZE},{hl_ass},&HFF000000,&HFF000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,2,10,10,{margin_v},1
-Style: Neon,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
-Style: Box,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,3,2,1,2,10,10,{margin_v},1
-Style: Sombra,FiraSans-SemiBold,{FONT_SIZE},{base_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,{margin_v},1
-Style: Hook,FiraSans-SemiBold,80,&H00FFFFFF,&H00000000,&H00000000,&HF0000000,-1,0,0,0,100,100,2,0,1,4,2,8,20,20,0,1
+Style: Base,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Karaoke,{fn},{FONT_SIZE},{hl_ass},&HFF000000,&HFF000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,2,10,10,{margin_v},1
+Style: Neon,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Pop,{fn},{FONT_SIZE},{hl_ass},&HFF000000,&HFF000000,&H00000000,-1,0,0,0,130,130,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Slide,{fn},{FONT_SIZE},{hl_ass},&H00000000,&HFF000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Typewriter,{fn},{FONT_SIZE},{hl_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Rainbow,{fn},{FONT_SIZE},{hl_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Box,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,3,2,1,2,10,10,{margin_v},1
+Style: Sombra,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,{margin_v},1
+Style: Hook,{fn},80,&H00FFFFFF,&H00000000,&H00000000,&HF0000000,-1,0,0,0,100,100,2,0,1,4,2,8,20,20,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -304,7 +338,7 @@ def _gerar_ass_karaoke(segmentos, inicio_global, fim_global, video_w, video_h):
 
 def _gerar_ass_simples(segmentos, inicio_global, fim_global, video_w, video_h, estilo):
     ass = _build_ass_header(video_w, video_h)
-    style_map = {"neon": "Neon", "box": "Box", "sombra": "Sombra"}
+    style_map = {"neon": "Neon", "box": "Box", "sombra": "Sombra", "pop": "Pop", "slide": "Slide", "typewriter": "Typewriter", "rainbow": "Rainbow"}
     style_name = style_map.get(estilo, "Sombra")
     grupos = _segmentos_para_grupos(segmentos, inicio_global, fim_global)
 
@@ -367,7 +401,8 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
 
     video_w, video_h = RESOLUCAO
 
-    if estilo == "karaoke":
+    word_by_word_styles = {"karaoke", "pop", "slide", "typewriter", "rainbow"}
+    if estilo in word_by_word_styles:
         ass_content = _gerar_ass_karaoke(segmentos, inicio_seg, fim_seg, video_w, video_h)
     else:
         ass_content = _gerar_ass_simples(segmentos, inicio_seg, fim_seg, video_w, video_h, estilo)
