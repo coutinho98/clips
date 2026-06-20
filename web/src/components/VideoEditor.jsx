@@ -53,7 +53,16 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
   const [meta, setMeta] = useState(null)
   const [videoDuration, setVideoDuration] = useState(0)
   const [videoSize, setVideoSize] = useState({ w: 0, h: 0 })
+  const [currentTime, setCurrentTime] = useState(0)
   const previewVideoRef = useRef(null)
+  const timeRafRef = useRef(null)
+
+  const fmtTime = (s) => {
+    if (!s || isNaN(s)) return '0:00'
+    const m = Math.floor(s / 60)
+    const sec = Math.floor(s % 60)
+    return `${m}:${String(sec).padStart(2, '0')}`
+  }
 
   useEffect(() => {
     const initial = {
@@ -77,6 +86,20 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
       .then(d => setMeta(d))
       .catch(() => {})
   }, [cut?.cut_id])
+
+  useEffect(() => {
+    let lastSec = -1
+    function tick() {
+      const v = previewVideoRef.current
+      if (v) {
+        const sec = Math.floor(v.currentTime)
+        if (sec !== lastSec) { lastSec = sec; setCurrentTime(v.currentTime) }
+      }
+      timeRafRef.current = requestAnimationFrame(tick)
+    }
+    timeRafRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(timeRafRef.current)
+  }, [])
 
   function pushHistory(newConfig) {
     setHistory(prev => {
@@ -164,17 +187,6 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
         <div className="flex flex-col flex-1 min-w-0 min-h-0">
           {/* Preview area */}
           <div className="relative flex flex-1 min-h-0 items-center justify-center bg-bg-secondary overflow-hidden">
-            {/* Toolbar overlay */}
-            <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-1.5 z-20 bg-gradient-to-b from-black/50 to-transparent pointer-events-none">
-              <div className="flex items-center gap-1 pointer-events-auto">
-                <button className="flex items-center justify-center w-6 h-6 rounded text-text-secondary hover:text-text hover:bg-white/10 transition-all" onClick={() => setZoom(z => Math.max(50, z - 25))}><ZoomOut size={12} /></button>
-                <span className="text-[10px] text-text-secondary w-8 text-center">{zoom}%</span>
-                <button className="flex items-center justify-center w-6 h-6 rounded text-text-secondary hover:text-text hover:bg-white/10 transition-all" onClick={() => setZoom(z => Math.min(200, z + 25))}><ZoomIn size={12} /></button>
-                <button className="flex items-center justify-center w-6 h-6 rounded text-text-secondary hover:text-text hover:bg-white/10 transition-all" onClick={() => setZoom(100)}><Maximize size={12} /></button>
-              </div>
-              <span className="text-[9px] font-bold text-accent-light bg-accent/20 px-2 py-0.5 rounded tracking-wide pointer-events-auto">LIVE PREVIEW</span>
-            </div>
-
             {/* Video preview - fits within container */}
             <div className="flex items-center justify-center w-full h-full" style={{ transform: `scale(${zoom / 100})` }}>
               <div className="relative h-full max-h-full overflow-hidden rounded-md" style={{ aspectRatio: '9 / 16' }}>
@@ -210,15 +222,44 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
                 )}
               </div>
             </div>
+          </div>
 
-            {/* Playback controls - bottom of preview */}
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2 z-20">
-              <button className="flex items-center justify-center w-8 h-8 rounded-md bg-black/50 backdrop-blur text-white hover:bg-black/70 transition-all" onClick={() => stepFrame(-1)}><SkipBack size={14} /></button>
-              <button className="flex items-center justify-center w-10 h-10 rounded-full bg-accent text-white hover:bg-accent-hover transition-all shadow-lg" onClick={togglePlayPause}>
+          {/* Transport bar */}
+          <div className="shrink-0 flex items-center justify-between px-3 py-1.5 bg-bg-tertiary border-y border-border gap-3">
+            {/* Left: time display */}
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[11px] font-mono font-semibold text-text tabular-nums">{fmtTime(currentTime)}</span>
+              <span className="text-[11px] font-mono text-text-muted tabular-nums">/ {fmtTime(videoDuration)}</span>
+            </div>
+
+            {/* Center: playback controls */}
+            <div className="flex items-center gap-1">
+              <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={() => stepFrame(-1)} title="Frame anterior">
+                <SkipBack size={14} />
+              </button>
+              <button className="flex items-center justify-center w-9 h-9 rounded-full bg-accent text-white hover:bg-accent-hover transition-all shadow-md" onClick={togglePlayPause} title={isPlaying ? 'Pausar' : 'Reproduzir'}>
                 {isPlaying ? <Pause size={16} /> : <Play size={16} />}
               </button>
-              <button className="flex items-center justify-center w-8 h-8 rounded-md bg-black/50 backdrop-blur text-white hover:bg-black/70 transition-all" onClick={() => stepFrame(1)}><SkipForward size={14} /></button>
-              <button className="px-2 py-1 ml-1 text-[11px] font-medium text-white bg-black/50 backdrop-blur border border-white/10 rounded-md hover:bg-black/70 transition-all" onClick={cycleSpeed}>{playbackSpeed}x</button>
+              <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={() => stepFrame(1)} title="Proximo frame">
+                <SkipForward size={14} />
+              </button>
+              <button className="px-2 py-1 ml-1 text-[10px] font-semibold text-text-secondary hover:text-text hover:bg-bg-hover rounded transition-all tabular-nums" onClick={cycleSpeed} title="Velocidade">
+                {playbackSpeed}x
+              </button>
+            </div>
+
+            {/* Right: zoom controls */}
+            <div className="flex items-center gap-0.5 shrink-0">
+              <button className="flex items-center justify-center w-6 h-6 rounded text-text-muted hover:text-text hover:bg-bg-hover transition-all" onClick={() => setZoom(z => Math.max(50, z - 25))} title="Diminuir zoom">
+                <ZoomOut size={13} />
+              </button>
+              <span className="text-[10px] text-text-muted w-8 text-center tabular-nums">{zoom}%</span>
+              <button className="flex items-center justify-center w-6 h-6 rounded text-text-muted hover:text-text hover:bg-bg-hover transition-all" onClick={() => setZoom(z => Math.min(200, z + 25))} title="Aumentar zoom">
+                <ZoomIn size={13} />
+              </button>
+              <button className="flex items-center justify-center w-6 h-6 rounded text-text-muted hover:text-text hover:bg-bg-hover transition-all" onClick={() => setZoom(100)} title="Reset zoom">
+                <Maximize size={12} />
+              </button>
             </div>
           </div>
 
