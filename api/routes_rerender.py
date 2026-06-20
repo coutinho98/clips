@@ -56,6 +56,7 @@ async def preview_subtitle(cut_id: str, body: dict):
     sub_mod.TEXT_MARGIN_BOTTOM = margin_bottom
     sub_mod.BASE_COLOR = body.get("base_color", "#B4B4B4")
     sub_mod.HIGHLIGHT_COLOR = body.get("highlight_color", "#FFFF32")
+    sub_mod.set_font(body.get("font_family", "fira-sans"))
 
     img = await asyncio.to_thread(sub_mod._generate_preview_frame, cut_id, meta, estilo, crop)
     if img is None:
@@ -196,6 +197,7 @@ def _rerender_thread(cut_id, render_config, meta):
         sub_mod.TEXT_MARGIN_BOTTOM = render_config.get("text_margin_bottom", 180)
         sub_mod.BASE_COLOR = render_config.get("base_color", "#B4B4B4")
         sub_mod.HIGHLIGHT_COLOR = render_config.get("highlight_color", "#FFFF32")
+        sub_mod.set_font(render_config.get("font_family", "fira-sans"))
 
         video_origem = meta["video_origem"]
         inicio = meta["inicio"]

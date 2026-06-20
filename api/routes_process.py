@@ -83,6 +83,7 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
         sub_mod.TEXT_MARGIN_BOTTOM = config.get("text_margin_bottom", 180)
         sub_mod.BASE_COLOR = config.get("base_color", "#B4B4B4")
         sub_mod.HIGHLIGHT_COLOR = config.get("highlight_color", "#FFFF32")
+        sub_mod.set_font(config.get("font_family", "fira-sans"))
 
         from modules.cache import gerar_job_id, salvar_cache, tem_etapa, obter_etapa
         from modules.live_downloader import baixar_live

@@ -8,7 +8,7 @@ import {
 function CutThumbnail({ src }) {
   const [failed, setFailed] = useState(false)
   return (
-    <div className="w-10 h-7 rounded bg-bg overflow-hidden shrink-0 flex items-center justify-center">
+    <div className="w-11 h-7 rounded bg-bg overflow-hidden shrink-0 flex items-center justify-center border border-border">
       {!failed ? (
         <img src={src} alt="" loading="lazy" onError={() => setFailed(true)}
           className="w-full h-full object-cover" />
@@ -38,7 +38,7 @@ function groupByFolder(cuts) {
 function CutRow({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onToggle, onContextMenu }) {
   return (
     <div
-      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition-all border ${isPlaying ? 'border-accent bg-accent/10' : isSelected ? 'border-accent/50 bg-accent/5' : 'border-transparent hover:bg-bg-hover'}`}
+      className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-all border ${isPlaying ? 'border-success bg-success/10 shadow-[0_0_8px_rgba(16,185,129,0.15)]' : isSelected ? 'border-accent bg-accent/10' : 'bg-bg-elevated border-border hover:border-border-light hover:bg-bg-hover'}`}
       style={{ animation: 'fade-in 0.2s ease forwards' }}
       onContextMenu={onContextMenu}
     >
@@ -51,7 +51,7 @@ function CutRow({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onTogg
           {cut.tamanho_mb && <span className="flex items-center gap-1 text-[10px] text-text-muted"><HardDrive size={9} /> {cut.tamanho_mb} MB</span>}
         </div>
       </div>
-      {cut._new && <span className="text-[9px] font-bold text-success bg-success/10 px-1.5 py-0.5 rounded shrink-0">NOVO</span>}
+      {cut._new && <span className="text-[9px] font-bold text-success bg-success/15 px-1.5 py-0.5 rounded shrink-0 border border-success/30">NOVO</span>}
       <div className="flex items-center gap-0.5 shrink-0">
         <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onPlay} title={isPlaying ? 'Parar' : 'Preview'}>
           {isPlaying ? <Square size={13} /> : <Play size={13} />}
@@ -66,7 +66,7 @@ function CutRow({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onTogg
 function CutCard({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onToggle, onContextMenu }) {
   return (
     <div
-      className={`rounded-lg overflow-hidden cursor-pointer transition-all border ${isPlaying ? 'border-accent' : isSelected ? 'border-accent/50' : 'border-border hover:border-border-light'}`}
+      className={`rounded-lg overflow-hidden cursor-pointer transition-all border ${isPlaying ? 'border-success shadow-[0_0_8px_rgba(16,185,129,0.15)]' : isSelected ? 'border-accent' : 'bg-bg-elevated border-border hover:border-border-light'}`}
       style={{ animation: 'fade-in 0.2s ease forwards' }}
       onContextMenu={onContextMenu}
     >
@@ -80,7 +80,7 @@ function CutCard({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onTog
         {cut.duracao && (
           <span className="absolute bottom-1.5 right-1.5 text-[9px] text-white bg-black/70 px-1.5 py-0.5 rounded">{Math.round(cut.duracao)}s</span>
         )}
-        {cut._new && <span className="absolute top-1.5 left-1.5 text-[9px] font-bold text-success bg-success/20 px-1.5 py-0.5 rounded">NOVO</span>}
+        {cut._new && <span className="absolute top-1.5 left-1.5 text-[9px] font-bold text-success bg-success/20 px-1.5 py-0.5 rounded border border-success/40">NOVO</span>}
       </div>
       <div className="p-2 flex items-center gap-1.5">
         <div className="text-xs font-medium text-text truncate flex-1" title={cut.titulo}>{cut.titulo}</div>
@@ -121,10 +121,6 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
 
   function toggleSelect(id) {
     setSelectedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
-  }
-  function toggleSelectAll(cutList) {
-    const allSelected = cutList.every(c => selectedIds.has(c.arquivo))
-    setSelectedIds(prev => { const next = new Set(prev); cutList.forEach(c => { allSelected ? next.delete(c.arquivo) : next.add(c.arquivo) }); return next })
   }
   function batchDownload(cutList) {
     cutList.filter(c => selectedIds.has(c.arquivo)).forEach(c => handleDownload(c))
@@ -194,16 +190,16 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
   return (
     <div className="flex h-full overflow-hidden bg-bg-tertiary">
       {/* Sidebar */}
-      <div className="w-44 shrink-0 border-r border-border flex flex-col bg-bg-secondary">
+      <div className="w-52 shrink-0 border-r border-border flex flex-col bg-bg-secondary">
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-border shrink-0">
-          <span className="text-[11px] font-semibold text-text">Lives</span>
-          <span className="text-[10px] font-bold text-text-muted bg-bg px-1.5 py-0.5 rounded min-w-[18px] text-center">{order.length}</span>
+          <span className="text-[11px] font-bold uppercase tracking-wide text-text-muted">Lives</span>
+          <span className="text-[10px] font-bold text-accent-light bg-accent/10 px-1.5 py-0.5 rounded border border-accent/20 min-w-[18px] text-center">{order.length}</span>
         </div>
-        <input className="mx-2 my-2 px-2 py-1.5 bg-bg-elevated border border-border rounded-md text-[11px] text-text outline-none focus:border-accent" type="text" placeholder="Buscar live..."
+        <input className="mx-2.5 my-2 px-2.5 py-1.5 bg-bg-elevated border border-border rounded-md text-[11px] text-text outline-none focus:border-accent" type="text" placeholder="Buscar live..."
           value={folderSearch} onChange={(e) => setFolderSearch(e.target.value)} />
         <div className="flex-1 overflow-y-auto px-1.5 pb-2 flex flex-col gap-0.5">
           <div
-            className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-[11px] transition-colors ${selectedFolder === null ? 'bg-accent/15 text-accent-light' : 'text-text-secondary hover:bg-bg-hover hover:text-text'}`}
+            className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-[11px] transition-colors border ${selectedFolder === null ? 'bg-accent/15 text-accent-light border-accent/30' : 'text-text-secondary hover:bg-bg-hover hover:text-text border-transparent'}`}
             onClick={() => setSelectedFolder(null)}
           >
             <Film size={13} className="shrink-0" />
@@ -213,7 +209,7 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
           {filteredFolders.map(folderKey => (
             <div
               key={folderKey}
-              className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-[11px] transition-colors ${selectedFolder === folderKey ? 'bg-accent/15 text-accent-light' : 'text-text-secondary hover:bg-bg-hover hover:text-text'}`}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-[11px] transition-colors border ${selectedFolder === folderKey ? 'bg-accent/15 text-accent-light border-accent/30' : 'text-text-secondary hover:bg-bg-hover hover:text-text border-transparent'}`}
               onClick={() => setSelectedFolder(folderKey)}
             >
               <FolderOpen size={13} className="shrink-0" />
@@ -226,7 +222,7 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 px-3.5 pt-2.5 pb-0 shrink-0 flex-wrap">
           <input className="flex-1 min-w-[120px] px-2.5 py-1.5 bg-bg-elevated border border-border rounded-md text-xs text-text outline-none focus:border-accent" type="text" placeholder="Buscar cortes..."
             value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
           {[
@@ -235,13 +231,13 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
             { key: 'titulo', label: 'Titulo' },
           ].map(s => (
             <button key={s.key}
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-[10px] font-medium transition-all ${sortBy === s.key ? 'bg-accent text-white' : 'text-text-secondary hover:text-text hover:bg-bg-hover'}`}
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-[10px] font-medium transition-all border ${sortBy === s.key ? 'bg-accent text-white border-accent' : 'bg-bg-elevated border-border text-text-secondary hover:text-text hover:border-border-light'}`}
               onClick={() => handleSort(s.key)}
             >
               <ArrowUpDown size={10} /> {s.label}
             </button>
           ))}
-          <div className="flex bg-bg-elevated rounded-md p-0.5">
+          <div className="flex bg-bg-elevated border border-border rounded-md p-0.5">
             <button className={`flex items-center justify-center w-7 h-6 rounded transition-all ${viewMode === 'list' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text'}`}
               onClick={() => { setViewMode('list'); localStorage.setItem('dcb-view', 'list') }} title="Lista">
               <List size={13} />
@@ -260,7 +256,7 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1">
+        <div className="flex-1 overflow-y-auto p-3.5 flex flex-col gap-1">
           {displayCuts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-text-muted">
               <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-2">
@@ -271,7 +267,7 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
               <span className="text-xs">Nenhum corte encontrado</span>
             </div>
           ) : viewMode === 'grid' ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-2">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2.5">
               {displayCuts.map((cut) => (
                 <CutCard key={cut.arquivo} cut={cut}
                   isPlaying={playingId === cut.arquivo} isSelected={selectedIds.has(cut.arquivo)}

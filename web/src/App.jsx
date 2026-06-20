@@ -461,7 +461,7 @@ export default function App() {
 
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Tabs */}
-          <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-border bg-bg-secondary shrink-0">
+          <div className="flex items-center px-2 h-9 border-b border-border bg-bg-secondary shrink-0 gap-0.5">
             {[
               { key: 'import', label: 'Importar', icon: Film, badge: null },
               { key: 'cuts', label: 'Cortes', icon: Scissors, badge: cuts.length > 0 ? cuts.length : null },
@@ -469,21 +469,35 @@ export default function App() {
             ].map(tab => (
               <button
                 key={tab.key}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${activeMainTab === tab.key ? 'bg-bg-tertiary text-text' : 'text-text-secondary hover:text-text hover:bg-bg-hover'}`}
+                className={`relative flex items-center gap-1.5 px-3.5 h-[30px] text-xs font-medium transition-colors ${activeMainTab === tab.key ? 'text-text bg-bg-tertiary rounded-t-md' : 'text-text-muted hover:text-text-secondary'}`}
                 onClick={() => setActiveMainTab(tab.key)}
               >
-                <tab.icon size={13} /> {tab.label}
+                <tab.icon size={13} className={activeMainTab === tab.key ? 'text-accent-light' : ''} />
+                {tab.label}
                 {tab.badge !== null && (
-                  <span className="text-[9px] font-bold bg-accent text-white px-1.5 py-0.5 rounded min-w-[16px] text-center">{tab.badge}</span>
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded min-w-[16px] text-center leading-none ${activeMainTab === tab.key ? 'bg-accent text-white' : 'bg-bg-elevated text-text-muted'}`}>{tab.badge}</span>
+                )}
+                {activeMainTab === tab.key && (
+                  <div className="absolute -bottom-px left-0 right-0 h-0.5 bg-accent rounded-full" />
                 )}
               </button>
             ))}
+            {editingCut && (
+              <button
+                className="ml-auto flex items-center justify-center w-6 h-6 rounded text-text-muted hover:text-danger hover:bg-danger/10 transition-colors text-xs"
+                onClick={() => { setEditingCut(null); setActiveMainTab('cuts') }}
+                title="Fechar editor"
+              >
+                ×
+              </button>
+            )}
           </div>
 
           {/* Main body */}
           <div className="flex-1 overflow-hidden">
             {activeMainTab === 'import' && (
-              <div className="h-full overflow-y-auto p-4">
+              <div className="h-full overflow-y-auto p-4 bg-bg">
+                <div className="max-w-2xl mx-auto">
                 <ProcessingPanel
                   onStart={startProcess}
                   onUpload={uploadVideo}
@@ -494,6 +508,7 @@ export default function App() {
                   pipeline={pipeline}
                   onCancel={handleCancelProcess}
                 />
+                </div>
               </div>
             )}
 
@@ -506,6 +521,7 @@ export default function App() {
             )}
 
             {activeMainTab === 'editor' && editingCut && (
+              <div className="h-full p-1.5">
               <Suspense fallback={<div className="flex items-center justify-center h-full text-xs text-text-muted">Carregando editor...</div>}>
                 <VideoEditor
                   cut={editingCut}
@@ -515,6 +531,7 @@ export default function App() {
                   processing={processing}
                 />
               </Suspense>
+              </div>
             )}
           </div>
         </div>

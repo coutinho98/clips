@@ -10,6 +10,7 @@ CONFIG_PATH = PASTA_TEMP / "web_config.json"
 DEFAULTS = {
     "font_size": 52,
     "subtitle_style": "karaoke",
+    "font_family": "fira-sans",
     "highlight_color": "#FFFF32",
     "base_color": "#B4B4B4",
     "shadow_color": "#000000",
