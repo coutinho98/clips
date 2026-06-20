@@ -154,7 +154,7 @@ export default function VideoEditor({ cut, config, onRerender, onClose, processi
     if (previewVideoRef.current) previewVideoRef.current.playbackRate = next
   }
 
-  const videoSrc = `/api/cuts/${encodeURIComponent(cut.arquivo)}`
+  const videoSrc = `/api/cut/${encodeURIComponent(cut.cut_id || cut.arquivo)}/clean`
 
   return (
     <div className="bg-bg-tertiary border border-border rounded-xl overflow-hidden flex flex-col h-full min-h-0" style={{ animation: 'slide-in-right 0.25s ease forwards' }}>
