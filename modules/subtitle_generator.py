@@ -444,6 +444,7 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
             vf_parts.append(f"scale={video_w}:{video_h}")
 
     escaped_ass = ass_path.replace("'", "'\\''").replace(":", "\\:")
+    clean_vf_parts = list(vf_parts)
     vf_parts.append(f"ass='{escaped_ass}'")
 
     duracao_corte = fim_seg - inicio_seg
@@ -497,6 +498,29 @@ def gerar_video_com_legendas(caminho_video, segmentos, inicio_seg, fim_seg,
 
     tamanho_mb = os.path.getsize(caminho_saida) / (1024 * 1024)
     print(f"  Vídeo salvo: {caminho_saida} ({tamanho_mb:.1f} MB)")
+
+    try:
+        clean_vf_parts.append("scale=540:960")
+        clean_vf = ",".join(clean_vf_parts)
+        clean_path = os.path.join(PASTA_TEMP, f"clean_{nome_arquivo}.mp4")
+        clean_cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(inicio_seg),
+            "-to", str(fim_seg),
+            "-i", caminho_video,
+            "-vf", clean_vf,
+            "-an",
+            "-c:v", "h264_nvenc",
+            "-preset", "p4",
+            "-cq", "28",
+            "-movflags", "+faststart",
+            clean_path,
+        ]
+        print("  Gerando preview limpo (540p)...")
+        subprocess.run(clean_cmd, capture_output=True, text=True, timeout=120)
+    except Exception as e:
+        print(f"  [CLEAN PREVIEW] Erro: {e}")
+
     return caminho_saida
 
 

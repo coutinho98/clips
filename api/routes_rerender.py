@@ -8,7 +8,7 @@ import threading
 import subprocess
 from pathlib import Path
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from typing import Optional
 
 from api.state import PASTA_OUTPUT, PASTA_TEMP
@@ -157,6 +157,156 @@ async def get_cut_meta(cut_id: str):
     if not meta:
         return JSONResponse({"error": "cut not found"}, status_code=404)
     return meta
+
+
+AVAILABLE_TAGS = ["engraçado", "drama", "reflexão", "dica", "polêmica", "storytelling", "emocional", "viral"]
+
+
+def _get_meta_path(cut_id):
+    from urllib.parse import unquote
+    cut_id = unquote(cut_id)
+    meta_name = cut_id.replace("corte_", "") + "_meta.json"
+    meta_path = PASTA_TEMP / meta_name
+    if meta_path.exists():
+        return meta_path
+    meta_path = PASTA_TEMP / f"{cut_id}_meta.json"
+    if meta_path.exists():
+        return meta_path
+    return PASTA_TEMP / f"{cut_id.replace('corte_', '')}_meta.json"
+
+
+@router.get("/tags")
+async def get_available_tags():
+    return {"tags": AVAILABLE_TAGS}
+
+
+@router.post("/cut/{cut_id}/tags")
+async def update_cut_tags(cut_id: str, body: dict):
+    from urllib.parse import unquote
+    cut_id = unquote(cut_id)
+    meta_path = _get_meta_path(cut_id)
+
+    if not meta_path.exists():
+        return JSONResponse({"error": "meta not found"}, status_code=404)
+
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+
+    meta["tags"] = body.get("tags", [])
+
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False)
+
+    return {"tags": meta["tags"]}
+
+
+_clean_cache = {}
+
+
+@router.get("/cut/{cut_id}/clean")
+async def get_clean_cut(cut_id: str):
+    import asyncio
+    from urllib.parse import unquote
+    cut_id = unquote(cut_id)
+
+    meta = await asyncio.to_thread(_get_cut_data, cut_id)
+    if not meta:
+        return JSONResponse({"error": "cut not found"}, status_code=404)
+
+    nome_arquivo = _sanitize_nome_clean(cut_id)
+    pipeline_clean = PASTA_TEMP / f"clean_{nome_arquivo}.mp4"
+
+    if pipeline_clean.exists():
+        return FileResponse(str(pipeline_clean), media_type="video/mp4")
+
+    video_origem = meta["video_origem"]
+    inicio = meta["inicio"]
+    fim = meta["fim"]
+
+    cache_key = f"{cut_id}:{int(os.path.getmtime(video_origem)) if os.path.exists(video_origem) else 0}"
+    clean_path = PASTA_TEMP / f"clean_{cache_key.replace('/', '_')}.mp4"
+
+    if not clean_path.exists():
+        await asyncio.to_thread(_generate_clean_cut, video_origem, inicio, fim, str(clean_path), meta)
+
+    if not clean_path.exists():
+        return JSONResponse({"error": "failed to generate clean cut"}, status_code=500)
+
+    return FileResponse(str(clean_path), media_type="video/mp4")
+
+
+def _sanitize_nome_clean(titulo, max_len=50):
+    import re
+    nome = titulo.replace(" ", "_").replace("/", "_")
+    nome = re.sub(r'[?#%&\\<>|*]', '', nome)
+    return nome[:max_len]
+
+
+def _generate_clean_cut(video_origem, inicio, fim, output_path, meta):
+    from config import RESOLUCAO
+    import subprocess as sp
+
+    if fim - inicio > 90:
+        fim = inicio + 90
+
+    probe = _probe_video_clean(video_origem)
+    orig_w = int(probe.get("width", 1920))
+    orig_h = int(probe.get("height", 1080))
+    target_w, target_h = RESOLUCAO
+
+    vf_parts = []
+    if orig_h > orig_w:
+        vf_parts.append(f"scale={target_w}:{target_h}")
+    else:
+        crop_w = int(orig_h * 9 / 16)
+        x_center = orig_w // 2
+        x1 = max(0, x_center - crop_w // 2)
+        vf_parts.append(f"crop={crop_w}:{orig_h}:{x1}:0")
+        vf_parts.append(f"scale={target_w}:{target_h}")
+
+    vf = ",".join(vf_parts)
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", str(inicio),
+        "-to", str(fim),
+        "-i", str(video_origem),
+        "-vf", vf,
+        "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
+        "-c:v", "h264_nvenc",
+        "-preset", "p4",
+        "-cq", "23",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-movflags", "+faststart",
+        output_path,
+    ]
+
+    print(f"  [CLEAN] Generating clean cut: {output_path}")
+    proc = sp.run(cmd, capture_output=True, text=True, timeout=120)
+    if proc.returncode != 0:
+        print(f"  [CLEAN] ffmpeg error: {proc.stderr[-300:]}")
+
+
+def _probe_video_clean(caminho_video):
+    import subprocess as sp
+    try:
+        proc = sp.run(
+            ["ffprobe", "-v", "error",
+             "-show_entries", "stream=width,height,codec_type",
+             "-of", "json", caminho_video],
+            capture_output=True, text=True, timeout=10,
+        )
+        import json
+        info = {"width": 1920, "height": 1080}
+        data = json.loads(proc.stdout)
+        for stream in data.get("streams", []):
+            if stream.get("codec_type") == "video":
+                info["width"] = int(stream.get("width", 1920))
+                info["height"] = int(stream.get("height", 1080))
+        return info
+    except Exception:
+        return {"width": 1920, "height": 1080}
 
 
 @router.post("/cut/{cut_id}/rerender")
