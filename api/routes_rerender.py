@@ -159,6 +159,47 @@ async def get_cut_meta(cut_id: str):
     return meta
 
 
+AVAILABLE_TAGS = ["engraçado", "drama", "reflexão", "dica", "polêmica", "storytelling", "emocional", "viral"]
+
+
+def _get_meta_path(cut_id):
+    from urllib.parse import unquote
+    cut_id = unquote(cut_id)
+    meta_name = cut_id.replace("corte_", "") + "_meta.json"
+    meta_path = PASTA_TEMP / meta_name
+    if meta_path.exists():
+        return meta_path
+    meta_path = PASTA_TEMP / f"{cut_id}_meta.json"
+    if meta_path.exists():
+        return meta_path
+    return PASTA_TEMP / f"{cut_id.replace('corte_', '')}_meta.json"
+
+
+@router.get("/tags")
+async def get_available_tags():
+    return {"tags": AVAILABLE_TAGS}
+
+
+@router.post("/cut/{cut_id}/tags")
+async def update_cut_tags(cut_id: str, body: dict):
+    from urllib.parse import unquote
+    cut_id = unquote(cut_id)
+    meta_path = _get_meta_path(cut_id)
+
+    if not meta_path.exists():
+        return JSONResponse({"error": "meta not found"}, status_code=404)
+
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+
+    meta["tags"] = body.get("tags", [])
+
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False)
+
+    return {"tags": meta["tags"]}
+
+
 _clean_cache = {}
 
 
@@ -171,6 +212,12 @@ async def get_clean_cut(cut_id: str):
     meta = await asyncio.to_thread(_get_cut_data, cut_id)
     if not meta:
         return JSONResponse({"error": "cut not found"}, status_code=404)
+
+    nome_arquivo = _sanitize_nome_clean(cut_id)
+    pipeline_clean = PASTA_TEMP / f"clean_{nome_arquivo}.mp4"
+
+    if pipeline_clean.exists():
+        return FileResponse(str(pipeline_clean), media_type="video/mp4")
 
     video_origem = meta["video_origem"]
     inicio = meta["inicio"]
@@ -186,6 +233,13 @@ async def get_clean_cut(cut_id: str):
         return JSONResponse({"error": "failed to generate clean cut"}, status_code=500)
 
     return FileResponse(str(clean_path), media_type="video/mp4")
+
+
+def _sanitize_nome_clean(titulo, max_len=50):
+    import re
+    nome = titulo.replace(" ", "_").replace("/", "_")
+    nome = re.sub(r'[?#%&\\<>|*]', '', nome)
+    return nome[:max_len]
 
 
 def _generate_clean_cut(video_origem, inicio, fim, output_path, meta):

@@ -88,6 +88,7 @@ def _list_cuts_sync():
                 score = meta.get("score", 0)
                 if meta.get("titulo"):
                     titulo = meta["titulo"]
+                tags = meta.get("tags", [])
             except Exception:
                 pass
 
@@ -99,6 +100,7 @@ def _list_cuts_sync():
             "tamanho_mb": round(size_mb, 1),
             "duracao": duracao,
             "score": score,
+            "tags": tags,
             "pasta": f.parent.name if f.parent != PASTA_OUTPUT else "",
         })
 

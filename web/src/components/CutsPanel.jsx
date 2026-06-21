@@ -1,20 +1,81 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Play, Square, Pencil, Download, Scissors,
   Clock, HardDrive, Film, Search, ArrowUpDown,
-  Copy, FolderOpen, LayoutGrid, List,
+  Copy, FolderOpen, LayoutGrid, List, Tag,
 } from 'lucide-react'
+
+const TAG_DEFS = [
+  { value: 'engraçado',     emoji: '😂', color: 'yellow' },
+  { value: 'drama',          emoji: '🎭', color: 'red' },
+  { value: 'reflexão',       emoji: '💭', color: 'blue' },
+  { value: 'dica',           emoji: '💡', color: 'green' },
+  { value: 'polêmica',       emoji: '🔥', color: 'orange' },
+  { value: 'storytelling',   emoji: '📖', color: 'purple' },
+  { value: 'emocional',      emoji: '❤️', color: 'pink' },
+  { value: 'viral',          emoji: '🚀', color: 'cyan' },
+]
+
+const TAG_STYLES = {
+  yellow:  { pill: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',   dot: 'bg-yellow-400' },
+  red:     { pill: 'bg-red-500/15 text-red-400 border-red-500/30',            dot: 'bg-red-400' },
+  blue:    { pill: 'bg-blue-500/15 text-blue-400 border-blue-500/30',         dot: 'bg-blue-400' },
+  green:   { pill: 'bg-green-500/15 text-green-400 border-green-500/30',      dot: 'bg-green-400' },
+  orange:  { pill: 'bg-orange-500/15 text-orange-400 border-orange-500/30',   dot: 'bg-orange-400' },
+  purple:  { pill: 'bg-purple-500/15 text-purple-400 border-purple-500/30',   dot: 'bg-purple-400' },
+  pink:    { pill: 'bg-pink-500/15 text-pink-400 border-pink-500/30',         dot: 'bg-pink-400' },
+  cyan:    { pill: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',         dot: 'bg-cyan-400' },
+}
+
+function tagDef(value) { return TAG_DEFS.find(t => t.value === value) || { emoji: '🏷️', color: 'gray' } }
+function tagStyle(value) { return TAG_STYLES[tagDef(value).color] || { pill: 'bg-bg-hover text-text-muted border-border', dot: 'bg-text-muted' } }
 
 function CutThumbnail({ src }) {
   const [failed, setFailed] = useState(false)
   return (
     <div className="w-11 h-7 rounded bg-bg overflow-hidden shrink-0 flex items-center justify-center border border-border">
       {!failed ? (
-        <img src={src} alt="" loading="lazy" onError={() => setFailed(true)}
-          className="w-full h-full object-cover" />
+        <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} className="w-full h-full object-cover" />
       ) : (
         <Film size={16} className="text-text-muted" />
       )}
+    </div>
+  )
+}
+
+function TagPill({ tag, active, onClick, size = 'sm' }) {
+  const def = tagDef(tag)
+  const st = tagStyle(tag)
+  const sz = size === 'xs' ? 'text-[8px] px-1 py-0.5 gap-0.5' : 'text-[9px] px-1.5 py-0.5 gap-1'
+  return (
+    <button
+      className={`inline-flex items-center rounded border transition-all ${sz} ${active ? st.pill : 'bg-bg-elevated text-text-muted border-border hover:text-text opacity-50 hover:opacity-100'}`}
+      onClick={(e) => { e.stopPropagation(); onClick?.(tag) }}
+    >
+      <span>{def.emoji}</span>
+      <span className="font-medium">{tag}</span>
+    </button>
+  )
+}
+
+function TagPicker({ cut, onToggleTag, onClose }) {
+  return (
+    <div className="absolute z-50 top-full right-0 mt-1 bg-bg-secondary border border-border-light rounded-lg shadow-2xl p-2 flex flex-col gap-1 min-w-[140px]" onClick={(e) => e.stopPropagation()}>
+      <div className="text-[9px] font-bold uppercase tracking-wide text-text-muted px-1 pb-1">Tags</div>
+      {TAG_DEFS.map(t => {
+        const active = (cut.tags || []).includes(t.value)
+        return (
+          <button
+            key={t.value}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-all border ${active ? tagStyle(t.value).pill : 'text-text-secondary hover:text-text hover:bg-bg-hover border-transparent'}`}
+            onClick={(e) => { e.stopPropagation(); onToggleTag(cut, t.value) }}
+          >
+            <span>{t.emoji}</span>
+            <span className="flex-1 text-left">{t.value}</span>
+            {active && <span className="text-[8px]">✓</span>}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -35,7 +96,8 @@ function groupByFolder(cuts) {
   return { groups, order }
 }
 
-function CutRow({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onToggle, onContextMenu }) {
+function CutRow({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onToggle, onContextMenu, onToggleTag }) {
+  const [showTags, setShowTags] = useState(false)
   return (
     <div
       className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-all border ${isPlaying ? 'border-success bg-success/10 shadow-[0_0_8px_rgba(16,185,129,0.15)]' : isSelected ? 'border-accent bg-accent/10' : 'bg-bg-elevated border-border hover:border-border-light hover:bg-bg-hover'}`}
@@ -45,14 +107,25 @@ function CutRow({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onTogg
       <input type="checkbox" className="w-3 h-3 accent-accent cursor-pointer shrink-0" checked={isSelected} onChange={onToggle} />
       <CutThumbnail src={`/api/cuts/${cut.arquivo}/thumb`} />
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-medium text-text truncate">{cut.titulo}</div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-text truncate">{cut.titulo}</span>
+          {(cut.tags || []).map(t => (
+            <span key={t} className={`inline-flex items-center gap-0.5 text-[8px] px-1 py-0.5 rounded border font-medium shrink-0 ${tagStyle(t).pill}`}>
+              {tagDef(t).emoji} {t}
+            </span>
+          ))}
+        </div>
         <div className="flex items-center gap-2.5 mt-0.5">
           {cut.duracao && <span className="flex items-center gap-1 text-[10px] text-text-muted"><Clock size={9} /> {Math.round(cut.duracao)}s</span>}
           {cut.tamanho_mb && <span className="flex items-center gap-1 text-[10px] text-text-muted"><HardDrive size={9} /> {cut.tamanho_mb} MB</span>}
         </div>
       </div>
       {cut._new && <span className="text-[9px] font-bold text-success bg-success/15 px-1.5 py-0.5 rounded shrink-0 border border-success/30">NOVO</span>}
-      <div className="flex items-center gap-0.5 shrink-0">
+      <div className="flex items-center gap-0.5 shrink-0 relative">
+        <button className={`flex items-center justify-center w-7 h-7 rounded-md transition-all ${showTags ? 'text-accent-light bg-accent/10' : 'text-text-secondary hover:text-text hover:bg-bg-hover'}`} onClick={(e) => { e.stopPropagation(); setShowTags(v => !v) }} title="Tags">
+          <Tag size={13} />
+        </button>
+        {showTags && <TagPicker cut={cut} onToggleTag={onToggleTag} onClose={() => setShowTags(false)} />}
         <button className="flex items-center justify-center w-7 h-7 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onPlay} title={isPlaying ? 'Parar' : 'Preview'}>
           {isPlaying ? <Square size={13} /> : <Play size={13} />}
         </button>
@@ -63,7 +136,8 @@ function CutRow({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onTogg
   )
 }
 
-function CutCard({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onToggle, onContextMenu }) {
+function CutCard({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onToggle, onContextMenu, onToggleTag }) {
+  const [showTags, setShowTags] = useState(false)
   return (
     <div
       className={`rounded-lg overflow-hidden cursor-pointer transition-all border ${isPlaying ? 'border-success shadow-[0_0_8px_rgba(16,185,129,0.15)]' : isSelected ? 'border-accent' : 'bg-bg-elevated border-border hover:border-border-light'}`}
@@ -82,11 +156,28 @@ function CutCard({ cut, isPlaying, isSelected, onPlay, onEdit, onDownload, onTog
         )}
         {cut._new && <span className="absolute top-1.5 left-1.5 text-[9px] font-bold text-success bg-success/20 px-1.5 py-0.5 rounded border border-success/40">NOVO</span>}
       </div>
-      <div className="p-2 flex items-center gap-1.5">
-        <div className="text-xs font-medium text-text truncate flex-1" title={cut.titulo}>{cut.titulo}</div>
-        <input type="checkbox" className="w-3 h-3 accent-accent cursor-pointer shrink-0" checked={isSelected} onChange={onToggle} />
-        <button className="flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onEdit} title="Editar"><Pencil size={12} /></button>
-        <button className="flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onDownload} title="Download"><Download size={12} /></button>
+      <div className="p-2">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-xs font-medium text-text truncate flex-1" title={cut.titulo}>{cut.titulo}</span>
+          <input type="checkbox" className="w-3 h-3 accent-accent cursor-pointer shrink-0" checked={isSelected} onChange={onToggle} />
+          <div className="relative">
+            <button className={`flex items-center justify-center w-6 h-6 rounded-md transition-all ${showTags ? 'text-accent-light bg-accent/10' : 'text-text-secondary hover:text-text hover:bg-bg-hover'}`} onClick={(e) => { e.stopPropagation(); setShowTags(v => !v) }} title="Tags">
+              <Tag size={12} />
+            </button>
+            {showTags && <TagPicker cut={cut} onToggleTag={onToggleTag} onClose={() => setShowTags(false)} />}
+          </div>
+          <button className="flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onEdit} title="Editar"><Pencil size={12} /></button>
+          <button className="flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:text-text hover:bg-bg-hover transition-all" onClick={onDownload} title="Download"><Download size={12} /></button>
+        </div>
+        {(cut.tags || []).length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {cut.tags.map(t => (
+              <span key={t} className={`inline-flex items-center gap-0.5 text-[8px] px-1 py-0.5 rounded border font-medium ${tagStyle(t).pill}`}>
+                {tagDef(t).emoji} {t}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -103,11 +194,30 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
   const [selectedFolder, setSelectedFolder] = useState(null)
   const [folderSearch, setFolderSearch] = useState('')
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('dcb-view') || 'list')
+  const [activeTags, setActiveTags] = useState(new Set())
+  const [localCuts, setLocalCuts] = useState(cuts)
+
+  useEffect(() => { setLocalCuts(cuts) }, [cuts])
 
   useEffect(() => {
     function handleClick() { setContextMenu(null) }
     window.addEventListener('click', handleClick)
     return () => window.removeEventListener('click', handleClick)
+  }, [])
+
+  const handleToggleTag = useCallback(async (cut, tag) => {
+    const current = cut.tags || []
+    const newTags = current.includes(tag) ? current.filter(t => t !== tag) : [...current, tag]
+
+    setLocalCuts(prev => prev.map(c => c.arquivo === cut.arquivo ? { ...c, tags: newTags } : c))
+
+    try {
+      await fetch(`/api/cut/${encodeURIComponent(cut.cut_id)}/tags`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags: newTags }),
+      })
+    } catch (e) { console.error('Failed to save tags:', e) }
   }, [])
 
   function handlePlay(cut) { setPlayingId(playingId === cut.arquivo ? null : cut.arquivo) }
@@ -134,15 +244,25 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
     setContextMenu({ x: e.clientX, y: e.clientY })
     setContextCut(cut)
   }
+  function toggleFilterTag(tag) {
+    setActiveTags(prev => { const next = new Set(prev); if (next.has(tag)) next.delete(tag); else next.add(tag); return next })
+  }
 
-  const { groups, order } = groupByFolder(cuts || [])
+  const { groups, order } = groupByFolder(localCuts || [])
   const filteredFolders = folderSearch
     ? order.filter(k => prettyFolderName(k).toLowerCase().includes(folderSearch.toLowerCase()))
     : order
 
-  let displayCuts = selectedFolder !== null ? (groups[selectedFolder] || []) : cuts
+  let displayCuts = selectedFolder !== null ? (groups[selectedFolder] || []) : localCuts
   if (searchQuery) {
     displayCuts = displayCuts.filter(c => (c.titulo || '').toLowerCase().includes(searchQuery.toLowerCase()))
+  }
+  if (activeTags.size > 0) {
+    displayCuts = displayCuts.filter(c => {
+      const cutTags = new Set(c.tags || [])
+      for (const t of activeTags) { if (cutTags.has(t)) return true }
+      return false
+    })
   }
   if (sortBy !== 'none') {
     displayCuts = [...displayCuts].sort((a, b) => {
@@ -156,7 +276,12 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
     })
   }
 
-  if (!cuts || cuts.length === 0) {
+  const tagCounts = {}
+  for (const c of (localCuts || [])) {
+    for (const t of (c.tags || [])) { tagCounts[t] = (tagCounts[t] || 0) + 1 }
+  }
+
+  if (!localCuts || localCuts.length === 0) {
     return (
       <div className="bg-bg-tertiary border border-border rounded-xl overflow-hidden flex flex-col h-full">
         <div className="flex items-center px-4 py-3 border-b border-border shrink-0">
@@ -204,7 +329,7 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
           >
             <Film size={13} className="shrink-0" />
             <span className="flex-1 truncate">Todos os cortes</span>
-            <span className="text-[10px] text-text-muted">{cuts.length}</span>
+            <span className="text-[10px] text-text-muted">{localCuts.length}</span>
           </div>
           {filteredFolders.map(folderKey => (
             <div
@@ -256,7 +381,32 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3.5 flex flex-col gap-1">
+        {/* Tag filter bar */}
+        <div className="flex items-center gap-1 px-3.5 py-1.5 shrink-0 flex-wrap">
+          <span className="text-[9px] font-bold uppercase tracking-wide text-text-muted mr-1">Filtrar:</span>
+          {TAG_DEFS.map(t => {
+            const count = tagCounts[t.value] || 0
+            const isActive = activeTags.has(t.value)
+            return (
+              <button
+                key={t.value}
+                className={`inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border font-medium transition-all ${isActive ? tagStyle(t.value).pill : 'bg-bg-elevated text-text-muted border-border hover:text-text'}`}
+                onClick={() => toggleFilterTag(t.value)}
+              >
+                <span>{t.emoji}</span>
+                <span>{t.value}</span>
+                {count > 0 && <span className={`text-[8px] ${isActive ? 'opacity-70' : 'opacity-50'}`}>{count}</span>}
+              </button>
+            )
+          })}
+          {activeTags.size > 0 && (
+            <button className="text-[9px] text-text-muted hover:text-accent-light ml-1 transition-colors" onClick={() => setActiveTags(new Set())}>
+              limpar
+            </button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3.5 pt-1 flex flex-col gap-1">
           {displayCuts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-text-muted">
               <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-2">
@@ -272,7 +422,8 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
                 <CutCard key={cut.arquivo} cut={cut}
                   isPlaying={playingId === cut.arquivo} isSelected={selectedIds.has(cut.arquivo)}
                   onPlay={() => handlePlay(cut)} onEdit={() => onEdit(cut)} onDownload={() => handleDownload(cut)}
-                  onToggle={() => toggleSelect(cut.arquivo)} onContextMenu={(e) => handleContextMenu(e, cut)} />
+                  onToggle={() => toggleSelect(cut.arquivo)} onContextMenu={(e) => handleContextMenu(e, cut)}
+                  onToggleTag={handleToggleTag} />
               ))}
             </div>
           ) : (
@@ -281,7 +432,8 @@ export default function CutsPanel({ cuts, onEdit, onGoImport }) {
                 <CutRow key={cut.arquivo} cut={cut}
                   isPlaying={playingId === cut.arquivo} isSelected={selectedIds.has(cut.arquivo)}
                   onPlay={() => handlePlay(cut)} onEdit={() => onEdit(cut)} onDownload={() => handleDownload(cut)}
-                  onToggle={() => toggleSelect(cut.arquivo)} onContextMenu={(e) => handleContextMenu(e, cut)} />
+                  onToggle={() => toggleSelect(cut.arquivo)} onContextMenu={(e) => handleContextMenu(e, cut)}
+                  onToggleTag={handleToggleTag} />
               ))}
             </div>
           )}
