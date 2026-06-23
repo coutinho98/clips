@@ -318,7 +318,7 @@ def corrigir_transcricao(transcricao):
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-    ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2")
+    ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 
     segmentos = transcricao.get("segmentos", [])
     if not segmentos:

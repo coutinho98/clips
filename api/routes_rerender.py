@@ -134,6 +134,12 @@ def _get_cut_data(cut_id):
                 if candidate.exists():
                     cut_path = candidate
                     break
+                for sub in d.iterdir():
+                    if sub.is_dir():
+                        candidate = sub / cut_filename
+                        if candidate.exists():
+                            cut_path = candidate
+                            break
     if not cut_path.exists():
         return None
 
@@ -399,7 +405,14 @@ def _rerender_thread(cut_id, render_config, meta):
 
             cut_filename = cut_id if cut_id.endswith(".mp4") else f"{cut_id}.mp4"
             cut_orig_path = None
-            for candidate in [PASTA_OUTPUT / cut_filename, *[d / cut_filename for d in PASTA_OUTPUT.iterdir() if d.is_dir()]]:
+            search_dirs = [PASTA_OUTPUT / cut_filename]
+            for d in PASTA_OUTPUT.iterdir():
+                if d.is_dir():
+                    search_dirs.append(d / cut_filename)
+                    for sub in d.iterdir():
+                        if sub.is_dir():
+                            search_dirs.append(sub / cut_filename)
+            for candidate in search_dirs:
                 if candidate.exists():
                     cut_orig_path = str(candidate)
                     break

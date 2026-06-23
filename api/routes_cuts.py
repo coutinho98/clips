@@ -70,6 +70,9 @@ def _list_cuts_sync():
     for d in PASTA_OUTPUT.iterdir():
         if d.is_dir():
             all_files.extend(d.glob("*.mp4"))
+            for sub in d.iterdir():
+                if sub.is_dir():
+                    all_files.extend(sub.glob("*.mp4"))
 
     for f in sorted(all_files, key=lambda x: x.stat().st_mtime, reverse=True):
         size_mb = f.stat().st_size / (1024 * 1024)
@@ -78,8 +81,16 @@ def _list_cuts_sync():
 
         duracao = _get_duration_cached(f)
 
+        if f.parent.parent == PASTA_OUTPUT:
+            pasta = f.parent.name
+        elif f.parent.parent.parent == PASTA_OUTPUT:
+            pasta = f.parent.parent.name
+        else:
+            pasta = ""
+
         score = 0
         titulo = nome
+        tags = []
         meta_path = PASTA_TEMP / f"{f.stem}_meta.json"
         if meta_path.exists():
             try:
@@ -101,24 +112,34 @@ def _list_cuts_sync():
             "duracao": duracao,
             "score": score,
             "tags": tags,
-            "pasta": f.parent.name if f.parent != PASTA_OUTPUT else "",
+            "pasta": pasta,
         })
 
     return {"cuts": cuts}
 
 
+def _find_cut_file(filename: str) -> Path | None:
+    filepath = PASTA_OUTPUT / filename
+    if filepath.exists():
+        return filepath
+    for d in PASTA_OUTPUT.iterdir():
+        if d.is_dir():
+            candidate = d / filename
+            if candidate.exists():
+                return candidate
+            for sub in d.iterdir():
+                if sub.is_dir():
+                    candidate = sub / filename
+                    if candidate.exists():
+                        return candidate
+    return None
+
+
 @router.get("/cuts/{filename}/thumb")
 async def get_cut_thumb(filename: str):
     import io
-    filepath = PASTA_OUTPUT / filename
-    if not filepath.exists():
-        for d in PASTA_OUTPUT.iterdir():
-            if d.is_dir():
-                candidate = d / filename
-                if candidate.exists():
-                    filepath = candidate
-                    break
-    if not filepath.exists():
+    filepath = _find_cut_file(filename)
+    if not filepath:
         return FileResponse(str(PASTA_OUTPUT / "placeholder.jpg")) if (PASTA_OUTPUT / "placeholder.jpg").exists() else JSONResponse({"error": "not found"}, status_code=404)
 
     thumb_dir = PASTA_TEMP / "thumbs"
@@ -145,15 +166,8 @@ async def get_cut_thumb(filename: str):
 
 @router.get("/cuts/{filename}")
 async def download_cut(filename: str):
-    filepath = PASTA_OUTPUT / filename
-    if not filepath.exists():
-        for d in PASTA_OUTPUT.iterdir():
-            if d.is_dir():
-                candidate = d / filename
-                if candidate.exists():
-                    filepath = candidate
-                    break
-    if not filepath.exists():
+    filepath = _find_cut_file(filename)
+    if not filepath:
         return {"error": "not found"}
     return FileResponse(
         str(filepath),
@@ -163,15 +177,8 @@ async def download_cut(filename: str):
 
 @router.get("/cuts/{filename}/download")
 async def download_cut_file(filename: str):
-    filepath = PASTA_OUTPUT / filename
-    if not filepath.exists():
-        for d in PASTA_OUTPUT.iterdir():
-            if d.is_dir():
-                candidate = d / filename
-                if candidate.exists():
-                    filepath = candidate
-                    break
-    if not filepath.exists():
+    filepath = _find_cut_file(filename)
+    if not filepath:
         return {"error": "not found"}
     return FileResponse(
         str(filepath),

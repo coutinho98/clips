@@ -70,7 +70,7 @@ class ProgressHook:
         _emit(f"[{step_num}/{total}] {msg}", pct)
 
 
-def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
+def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict, tag: Optional[str] = None):
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
     s = _get_state()
@@ -128,7 +128,10 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
             safe_title = _re.sub(r'[^\w\s-]', '', video_titulo)[:50].strip().replace(' ', '_')
         else:
             safe_title = _re.sub(r'[^\w]', '', job_id)[:30]
-        output_dir = os.path.join(str(PASTA_OUTPUT), safe_title)
+        if tag:
+            output_dir = os.path.join(str(PASTA_OUTPUT), safe_title, tag)
+        else:
+            output_dir = os.path.join(str(PASTA_OUTPUT), safe_title)
         os.makedirs(output_dir, exist_ok=True)
         print(f"  Output: {output_dir}")
 
@@ -202,6 +205,7 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                 if _usar_ollama() or OPENAI_API_KEY:
                     cortes_ia = detectar_highlights(
                         transcricao, picos_audio=momentos_audio, max_cortes=max_cuts,
+                        focus_tag=tag,
                     )
                     cortes.extend(cortes_ia)
             except Exception as e:
@@ -257,6 +261,7 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                     "score": r.get("score", 0),
                     "segmentos": segs_do_corte,
                     "hook_text": r.get("hook_text", ""),
+                    "tags": r.get("tags", [tag] if tag else []),
                 }
 
                 cut_meta_path = PASTA_TEMP / f"{cut_id}_meta.json"
@@ -278,7 +283,7 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                     "duracao": r["duracao"],
                     "score": r.get("score", 0),
                     "tamanho_mb": round(_os.path.getsize(r["caminho"]) / (1024 * 1024), 1),
-                    "tags": r.get("tags", []),
+                    "tags": r.get("tags", [tag] if tag else []),
                 })
 
         _emit("Pronto!", 100, cuts=cuts_data)
@@ -308,6 +313,7 @@ async def process_video(
     url: Optional[str] = Form(None),
     local_path: Optional[str] = Form(None),
     video: Optional[UploadFile] = File(None),
+    tag: Optional[str] = Form(None),
 ):
     s = _get_state()
     if s.processing:
@@ -334,6 +340,7 @@ async def process_video(
     thread = threading.Thread(
         target=_run_pipeline,
         args=(url, video_path, config),
+        kwargs={"tag": tag},
         daemon=True,
     )
     thread.start()
