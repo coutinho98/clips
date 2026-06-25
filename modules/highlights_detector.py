@@ -126,6 +126,17 @@ FOCUS_CATEGORIAS_HEURISTICA = {
     "viral": [],
 }
 
+FOCUS_IA_KEYWORDS = {
+    "engraçado": ["humor", "engraç", "comedia", "piada", "engrac", "funny", "riso", "engraçad"],
+    "drama": ["confront", "escand", "drama", "conflit", "briga", "discuss", "tens", "expo"],
+    "reflexão": ["reflex", "serio", "filosof", "motivac", "licao", "sabed", "profund", "pensar"],
+    "dica": ["dica", "conselh", "informac", "tutorial", "educac", "util", "pratic"],
+    "polêmica": ["polem", "controver", "debate", "opiniao", "discord"],
+    "storytelling": ["historia", "narrativ", "relato", "story", "anecdota", "cont"],
+    "emocional": ["emocion", "emoc", "choro", "vulnerab", "sentiment", "tocant", "saudade", "nostalg"],
+    "viral": [],
+}
+
 
 def _usar_ollama():
     global _ollama_cache
@@ -177,7 +188,12 @@ def _chamar_openai(system_prompt, user_content):
     return resposta.choices[0].message.content.strip()
 
 
-def detectar_highlights(transcricao, picos_audio=None, max_cortes=5, focus_tag=None):
+def _overlap_intervalo(ini1, fim1, ini2, fim2, min_overlap=10):
+    overlap = min(fim1, fim2) - max(ini1, ini2)
+    return overlap > min_overlap
+
+
+def detectar_highlights(transcricao, picos_audio=None, max_cortes=5, focus_tag=None, excluir_intervalos=None):
     segmentos = transcricao.get("segmentos", [])
     if not segmentos:
         print("  [ERRO] Nenhum segmento na transcrição")
@@ -195,10 +211,22 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5, focus_tag=N
     if focus_tag:
         print(f"  🎯 Foco: {focus_tag}")
 
-    candidatos = _gerar_candidatos(segmentos, picos_audio, max_cortes * 5)
+    num_candidatos = max_cortes * 8 if focus_tag else max_cortes * 5
+    candidatos = _gerar_candidatos(segmentos, picos_audio, num_candidatos)
     if not candidatos:
         print("  [ERRO] Nenhum candidato gerado")
         return []
+
+    if excluir_intervalos:
+        antes = len(candidatos)
+        candidatos = [
+            c for c in candidatos
+            if not any(
+                _overlap_intervalo(c["inicio_seg"], c["fim_seg"], ei, ef)
+                for ei, ef in excluir_intervalos
+            )
+        ]
+        print(f"  Excluindo {antes - len(candidatos)} candidatos sobrepostos com cortes existentes")
 
     if focus_tag and focus_tag in FOCUS_CATEGORIAS_HEURISTICA:
         cats_foco = FOCUS_CATEGORIAS_HEURISTICA[focus_tag]
@@ -218,6 +246,18 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5, focus_tag=N
     avaliados = _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, segmentos, focus_tag=focus_tag)
 
     avaliados.sort(key=lambda x: x.get("score_viral") or 0, reverse=True)
+
+    if focus_tag and focus_tag in FOCUS_IA_KEYWORDS:
+        keywords = FOCUS_IA_KEYWORDS[focus_tag]
+        if keywords:
+            antes = len(avaliados)
+            avaliados = [
+                c for c in avaliados
+                if any(kw in (c.get("tipo", "") + c.get("motivo", "") + c.get("tema", "")).lower() for kw in keywords)
+                or c.get("score_viral", 0) >= 8
+            ]
+            print(f"  Filtro pós-IA ({focus_tag}): {antes} -> {len(avaliados)} cortes")
+
     avaliados = _validar_e_corrigir(avaliados, segmentos)
     avaliados = _remover_temas_duplicados(avaliados)
     avaliados = avaliados[:max_cortes]
@@ -271,7 +311,11 @@ def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, segmentos, max_w
                     resultado["inicio_seg"] = novo_inicio
 
             score = resultado.get("score_viral") or 0
-            if resultado.get("bom", False) or score >= 5:
+            if focus_tag:
+                aprovado = resultado.get("bom", False) and score >= 4
+            else:
+                aprovado = resultado.get("bom", False) or score >= 5
+            if aprovado:
                 resultado["tipo"] = resultado.get("categoria", cat_preliminar)
                 tag_list = ["reels", "viral", "fyp", "shorts", "trending"]
                 if focus_tag:
