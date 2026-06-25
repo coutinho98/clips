@@ -259,7 +259,7 @@ export default function App() {
     setConfig(data.config)
   }, [])
 
-  const startProcess = useCallback(async (url, localPath) => {
+  const startProcess = useCallback(async (url, localPath, tag) => {
     setError('')
     setProcessing(true)
     setProgress(0)
@@ -270,6 +270,7 @@ export default function App() {
     const formData = new FormData()
     if (url) formData.append('url', url)
     if (localPath) formData.append('local_path', localPath)
+    if (tag) formData.append('tag', tag)
 
     const res = await fetch('/api/process', {
       method: 'POST',
@@ -288,7 +289,7 @@ export default function App() {
     if (data.config) setConfig(data.config)
   }, [addToast])
 
-  const uploadVideo = useCallback(async (file) => {
+  const uploadVideo = useCallback(async (file, tag) => {
     setError('')
     setProcessing(true)
     setProgress(0)
@@ -298,6 +299,7 @@ export default function App() {
 
     const formData = new FormData()
     formData.append('video', file)
+    if (tag) formData.append('tag', tag)
 
     const res = await fetch('/api/process', {
       method: 'POST',

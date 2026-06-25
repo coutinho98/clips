@@ -155,16 +155,16 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Base,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
-Style: Karaoke,{fn},{FONT_SIZE},{hl_ass},&HFF000000,&HFF000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,2,10,10,{margin_v},1
-Style: Neon,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
-Style: Pop,{fn},{FONT_SIZE},{hl_ass},&HFF000000,&HFF000000,&H00000000,-1,0,0,0,130,130,0,0,1,2,1,2,10,10,{margin_v},1
-Style: Slide,{fn},{FONT_SIZE},{hl_ass},&H00000000,&HFF000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
-Style: Typewriter,{fn},{FONT_SIZE},{hl_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
-Style: Rainbow,{fn},{FONT_SIZE},{hl_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
-Style: Box,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,3,2,1,2,10,10,{margin_v},1
-Style: Sombra,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,{margin_v},1
-Style: Hook,{fn},80,&H00FFFFFF,&H00000000,&H00000000,&HF0000000,-1,0,0,0,100,100,2,0,1,4,2,8,20,20,0,1
+Style: Base,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HA0000000,0,0,0,0,100,100,0,0,1,1,1,2,10,10,{margin_v},1
+Style: Karaoke,{fn},{FONT_SIZE},{hl_ass},&HFF000000,&HFF000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,2,10,10,{margin_v},1
+Style: Neon,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HAA000000,0,0,0,0,100,100,0,0,1,1,1,2,10,10,{margin_v},1
+Style: Pop,{fn},{FONT_SIZE},{hl_ass},&HFF000000,&HFF000000,&H00000000,0,0,0,0,130,130,0,0,1,1,1,2,10,10,{margin_v},1
+Style: Slide,{fn},{FONT_SIZE},{hl_ass},&H00000000,&HFF000000,&H80000000,0,0,0,0,100,100,0,0,1,1,1,2,10,10,{margin_v},1
+Style: Typewriter,{fn},{FONT_SIZE},{hl_ass},&H00000000,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,1,1,2,10,10,{margin_v},1
+Style: Rainbow,{fn},{FONT_SIZE},{hl_ass},&H00000000,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,1,1,2,10,10,{margin_v},1
+Style: Box,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&HFF000000,0,0,0,0,100,100,0,0,3,1,1,2,10,10,{margin_v},1
+Style: Sombra,{fn},{FONT_SIZE},{base_ass},&H00000000,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,{margin_v},1
+Style: Hook,{fn},80,&H00FFFFFF,&H00000000,&H00000000,&HF0000000,0,0,0,0,100,100,2,0,1,3,2,8,20,20,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -219,7 +219,7 @@ def _palavra_valida(word):
 
 
 def _segmentos_para_grupos(segmentos, inicio_global, fim_global,
-                           max_palavras=5, max_duracao=1.8):
+                           max_palavras=2, max_duracao=1.5):
     grupos = []
 
     for seg in segmentos:
@@ -299,7 +299,7 @@ def _gerar_ass_karaoke(segmentos, inicio_global, fim_global, video_w, video_h):
 
         texto = _quebrar_texto_legenda(grupo["texto"])[0]
         escaped = _escape_ass(texto)
-        ass += f"Dialogue: 0,{_format_ass_time(t_start - inicio_global)},{_format_ass_time(t_end - inicio_global)},Base,,0,0,0,,{escaped}\n"
+        ass += f"Dialogue: 0,{_format_ass_time(t_start - inicio_global)},{_format_ass_time(t_end - inicio_global)},Base,,0,0,0,,{{\\fad(120,80)}}{escaped}\n"
 
         words = grupo["words"]
         if not words:
@@ -329,7 +329,7 @@ def _gerar_ass_karaoke(segmentos, inicio_global, fim_global, video_w, video_h):
             karaoke_elapsed = word_start_cs + dur_cs
 
         karaoke = "".join(parts)
-        ass += f"Dialogue: 1,{_format_ass_time(k_start - inicio_global)},{_format_ass_time(k_end - inicio_global)},Karaoke,,0,0,0,,{karaoke}\n"
+        ass += f"Dialogue: 1,{_format_ass_time(k_start - inicio_global)},{_format_ass_time(k_end - inicio_global)},Karaoke,,0,0,0,,{{\\fad(120,80)}}{karaoke}\n"
 
         prev_end = t_end
 
@@ -351,7 +351,7 @@ def _gerar_ass_simples(segmentos, inicio_global, fim_global, video_w, video_h, e
 
         texto = _quebrar_texto_legenda(grupo["texto"])[0]
         escaped = _escape_ass(texto)
-        ass += f"Dialogue: 0,{_format_ass_time(t_start - inicio_global)},{_format_ass_time(t_end - inicio_global)},{style_name},,0,0,0,,{escaped}\n"
+        ass += f"Dialogue: 0,{_format_ass_time(t_start - inicio_global)},{_format_ass_time(t_end - inicio_global)},{style_name},,0,0,0,,{{\\fad(120,80)}}{escaped}\n"
 
         prev_end = t_end
 

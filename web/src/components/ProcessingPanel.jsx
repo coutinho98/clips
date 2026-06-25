@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Panel, PanelHeader } from '../ui'
 import {
   Link, Upload, HardDrive, AlertCircle, Film, ArrowRight, FolderOpen,
-  Check, Loader2, CircleDot, ScanSearch, Scissors, Sparkles,
+  Check, Loader2, CircleDot, ScanSearch, Scissors, Sparkles, Tag,
 } from 'lucide-react'
 
 const STEP_ICONS = {
@@ -13,6 +13,28 @@ const STEP_ICONS = {
   render: Sparkles,
 }
 
+const TAG_OPTIONS = [
+  { value: 'engraçado',     emoji: '😂', color: 'yellow' },
+  { value: 'drama',          emoji: '🎭', color: 'red' },
+  { value: 'reflexão',       emoji: '💭', color: 'blue' },
+  { value: 'dica',           emoji: '💡', color: 'green' },
+  { value: 'polêmica',       emoji: '🔥', color: 'orange' },
+  { value: 'storytelling',   emoji: '📖', color: 'purple' },
+  { value: 'emocional',      emoji: '❤️', color: 'pink' },
+  { value: 'viral',          emoji: '🚀', color: 'cyan' },
+]
+
+const TAG_ACTIVE_STYLES = {
+  yellow:  'bg-yellow-500/20 text-yellow-400 border-yellow-500/40',
+  red:     'bg-red-500/20 text-red-400 border-red-500/40',
+  blue:    'bg-blue-500/20 text-blue-400 border-blue-500/40',
+  green:   'bg-green-500/20 text-green-400 border-green-500/40',
+  orange:  'bg-orange-500/20 text-orange-400 border-orange-500/40',
+  purple:  'bg-purple-500/20 text-purple-400 border-purple-500/40',
+  pink:    'bg-pink-500/20 text-pink-400 border-pink-500/40',
+  cyan:    'bg-cyan-500/20 text-cyan-400 border-cyan-500/40',
+}
+
 export default function ProcessingPanel({ onStart, onUpload, processing, progress, step, error, pipeline, onCancel }) {
   const urlRef = useRef('')
   const fileRef = useRef(null)
@@ -20,6 +42,7 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
   const [selectedVideo, setSelectedVideo] = useState('')
   const [activeTab, setActiveTab] = useState('url')
   const [dragOver, setDragOver] = useState(false)
+  const [selectedTag, setSelectedTag] = useState(null)
 
   useEffect(() => { fetchLocalVideos() }, [])
 
@@ -34,24 +57,24 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
   function handleSubmitUrl() {
     const url = urlRef.current?.trim()
     if (!url) return
-    onStart(url)
+    onStart(url, null, selectedTag)
   }
 
   function handleLocalProcess() {
     if (!selectedVideo) return
-    onStart(null, selectedVideo)
+    onStart(null, selectedVideo, selectedTag)
   }
 
   function handleFileChange(e) {
     const file = e.target.files?.[0]
-    if (file) onUpload(file)
+    if (file) onUpload(file, selectedTag)
   }
 
   function handleDrop(e) {
     e.preventDefault()
     setDragOver(false)
     const file = e.dataTransfer.files?.[0]
-    if (file) onUpload(file)
+    if (file) onUpload(file, selectedTag)
   }
 
   const inputClass = 'w-full px-3 py-2 bg-bg-elevated border border-border rounded-md text-xs text-text outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/[0.08] transition-all placeholder:text-text-muted disabled:opacity-40'
@@ -83,6 +106,26 @@ export default function ProcessingPanel({ onStart, onUpload, processing, progres
               <t.icon size={13} /> {t.label}
             </button>
           ))}
+        </div>
+
+        {/* Tag selector */}
+        <div className="mb-1">
+          <label className="flex items-center gap-1 text-[10px] font-medium text-text-secondary mb-1.5" style={{ letterSpacing: '0.3px' }}>
+            <Tag size={12} className="opacity-50" /> Categoria (opcional)
+          </label>
+          <div className="flex flex-wrap gap-1">
+            {TAG_OPTIONS.map(t => (
+              <button
+                key={t.value}
+                disabled={processing}
+                className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-md border font-medium transition-all ${selectedTag === t.value ? TAG_ACTIVE_STYLES[t.color] : 'bg-bg-elevated text-text-muted border-border hover:text-text hover:border-border-light'}`}
+                onClick={() => setSelectedTag(selectedTag === t.value ? null : t.value)}
+              >
+                <span>{t.emoji}</span>
+                <span>{t.value}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* URL tab */}

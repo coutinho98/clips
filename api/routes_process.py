@@ -70,7 +70,39 @@ class ProgressHook:
         _emit(f"[{step_num}/{total}] {msg}", pct)
 
 
-def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
+def _coletar_intervalos_existentes(safe_title):
+    intervalos = []
+    video_base = PASTA_OUTPUT / safe_title
+    mp4_files = []
+
+    if video_base.exists():
+        mp4_files.extend(video_base.glob("*.mp4"))
+        for sub in video_base.iterdir():
+            if sub.is_dir():
+                mp4_files.extend(sub.glob("*.mp4"))
+
+    for sub in PASTA_OUTPUT.iterdir():
+        if sub.is_dir() and sub.name != safe_title:
+            candidate = sub / safe_title
+            if candidate.is_dir():
+                mp4_files.extend(candidate.glob("*.mp4"))
+
+    for mp4 in mp4_files:
+        meta_path = PASTA_TEMP / f"{mp4.stem}_meta.json"
+        if meta_path.exists():
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                ini = meta.get("inicio")
+                fim = meta.get("fim")
+                if ini is not None and fim is not None:
+                    intervalos.append((float(ini), float(fim)))
+            except Exception:
+                pass
+    return intervalos
+
+
+def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict, tag: Optional[str] = None):
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
     s = _get_state()
@@ -128,7 +160,10 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
             safe_title = _re.sub(r'[^\w\s-]', '', video_titulo)[:50].strip().replace(' ', '_')
         else:
             safe_title = _re.sub(r'[^\w]', '', job_id)[:30]
-        output_dir = os.path.join(str(PASTA_OUTPUT), safe_title)
+        if tag:
+            output_dir = os.path.join(str(PASTA_OUTPUT), safe_title, tag)
+        else:
+            output_dir = os.path.join(str(PASTA_OUTPUT), safe_title)
         os.makedirs(output_dir, exist_ok=True)
         print(f"  Output: {output_dir}")
 
@@ -200,8 +235,12 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                 from modules.highlights_detector import detectar_highlights, _usar_ollama
                 from config import OPENAI_API_KEY
                 if _usar_ollama() or OPENAI_API_KEY:
+                    intervalos_existentes = _coletar_intervalos_existentes(safe_title)
+                    if intervalos_existentes:
+                        print(f"  {len(intervalos_existentes)} cortes já existentes serão evitados")
                     cortes_ia = detectar_highlights(
                         transcricao, picos_audio=momentos_audio, max_cortes=max_cuts,
+                        focus_tag=tag, excluir_intervalos=intervalos_existentes,
                     )
                     cortes.extend(cortes_ia)
             except Exception as e:
@@ -257,6 +296,7 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                     "score": r.get("score", 0),
                     "segmentos": segs_do_corte,
                     "hook_text": r.get("hook_text", ""),
+                    "tags": r.get("tags", [tag] if tag else []),
                 }
 
                 cut_meta_path = PASTA_TEMP / f"{cut_id}_meta.json"
@@ -278,7 +318,7 @@ def _run_pipeline(url: Optional[str], video_path: Optional[str], config: dict):
                     "duracao": r["duracao"],
                     "score": r.get("score", 0),
                     "tamanho_mb": round(_os.path.getsize(r["caminho"]) / (1024 * 1024), 1),
-                    "tags": r.get("tags", []),
+                    "tags": r.get("tags", [tag] if tag else []),
                 })
 
         _emit("Pronto!", 100, cuts=cuts_data)
@@ -308,6 +348,7 @@ async def process_video(
     url: Optional[str] = Form(None),
     local_path: Optional[str] = Form(None),
     video: Optional[UploadFile] = File(None),
+    tag: Optional[str] = Form(None),
 ):
     s = _get_state()
     if s.processing:
@@ -334,6 +375,7 @@ async def process_video(
     thread = threading.Thread(
         target=_run_pipeline,
         args=(url, video_path, config),
+        kwargs={"tag": tag},
         daemon=True,
     )
     thread.start()

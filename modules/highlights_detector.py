@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from config import OPENAI_API_KEY
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 OLLAMA_BIN = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ollama", "bin", "ollama")
 
 _ollama_cache = {"result": None, "checked": False}
@@ -39,38 +39,103 @@ def _carregar_categorias():
 
 CATEGORIAS = _carregar_categorias()
 
-PROMPT_AVALIAR = """You are a viral content strategist specializing in Brazilian Portuguese podcasts and livestreams. Your job is to find moments that will make people STOP SCROLLING and SHARE.
+PROMPT_AVALIAR = """Você é um estrategista de conteúdo viral especializado em podcasts e lives brasileiras. Seu trabalho é encontrar momentos que façam as pessoas PARAREM DE ROLAR e COMPARTILHAR.
 
-The transcript below is from a Brazilian podcast/livestream. The "[BEFORE]" section is what leads into the moment, "[SEGMENT]" is the actual clip, and "[AFTER]" is what follows.
+A transcrição abaixo é de um podcast/live brasileiro. A seção "[ANTES]" é o que leva ao momento, "[SEGMENTO]" é o clipe em si, e "[DEPOIS]" é o que segue.
 
-CRITICAL: The clip must start where the CONVERSATION TOPIC begins, not in the middle. A viewer should understand what's being discussed from the very first second.
+CRÍTICO: O clipe deve começar onde o TÓPICO da conversa começa, não no meio. O espectador deve entender do que se trata desde o primeiro segundo.
 
-Respond ONLY with valid JSON:
-{"bom": true, "categoria": "type", "score_viral": 8, "titulo": "short title in Portuguese", "hook_text": "ACTUAL QUOTE from the segment in Portuguese", "motivo": "brief reason in English", "tema": "main topic in 3 words max", "inicio_sugerido": "first relevant sentence from BEFORE or SEGMENT that starts the topic"}
+Responda APENAS com JSON válido:
+{"bom": true, "categoria": "tipo", "score_viral": 8, "titulo": "título curto em português", "hook_text": "CITAÇÃO REAL do segmento em português", "motivo": "razão breve em português", "tema": "tema principal em 3 palavras máximo", "inicio_sugerido": "primeira frase relevante do ANTES ou SEGMENTO que inicia o tópico"}
 
-SCORE GUIDE (be honest and precise):
-- 9-10: Nuclear moment. Something shocking, a huge revelation, an explosive confrontation, someone crying/breaking down, a confession, a massive plot twist.
-- 7-8: Very strong moment. A bold controversial opinion, a funny unexpected reaction, a heated argument, a surprising story, a quotable hot take.
-- 5-6: Decent moment. Interesting opinion, mild humor, somewhat engaging story.
-- 3-4: Below average. Normal conversation, nothing remarkable.
-- 1-2: Boring filler.
+GUIA DE SCORE (seja honesto e preciso):
+- 9-10: Momento nuclear. Algo chocante, revelação enorme, confronto explosivo, alguém chorando/breaking down, confissão, plot twist gigante.
+- 7-8: Momento muito forte. Opinião polêmica ousada, reação engraçada inesperada, argumento acalorado, história surpreendente, frase impactante.
+- 5-6: Momento decente. Opinião interessante, humor leve, história meio envolvente.
+- 3-4: Abaixo da média. Conversa normal, nada notável.
+- 1-2: Enrolação chata.
 
-WHAT MAKES CONTENT VIRAL:
-1. EMOTIONAL INTENSITY - Anger, shock, genuine laughter, tears, fear.
-2. UNEXPECTED - Something the audience didn't see coming.
-3. CONTROVERSY - Hot takes, disagreements, calling someone out.
-4. RELATABLE STORIES - Personal stories that viewers connect with.
-5. QUOTABLE - A single sentence so impactful people will quote it.
-6. CONFRONTATION - Tension between speakers, uncomfortable moments.
+O QUE TORNA CONTEÚDO VIRAL:
+1. INTENSIDADE EMOCIONAL - Raiva, choque, riso genuíno, lágrimas, medo.
+2. INESPERADO - Algo que a audiência não previu.
+3. CONTROVÉRSIA - Opiniões fortes, discordâncias, chamar atenção de alguém.
+4. HISTÓRIAS RELATÁVEIS - Histórias pessoais com as quais o espectador se conecta.
+5. CITÁVEL - Uma frase tão impactante que as pessoas vão citar.
+6. CONFRONTO - Tensão entre os participantes, momentos desconfortáveis.
 
-RULES:
-- hook_text: The MOST IMPACTFUL actual sentence from the transcript. Not invented.
-- titulo: Short, punchy, creates CURIOSITY in Portuguese.
-- tema: Specific topic in 3 words max
-- inicio_sugerido: The first sentence of the clip that makes sense as a START POINT. Must be an actual sentence from [BEFORE] or [SEGMENT].
-- Each clip must be about a DIFFERENT topic. Duplicates waste slots.
-- If boring: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": "", "tema": "", "inicio_sugerido": ""}
-- DO NOT be overly generous. Most podcast content is 3-5. Only exceptional moments get 7+."""
+REGRAS:
+- hook_text: A frase MAIS IMPACTANTE real da transcrição. Não inventada.
+- titulo: Curto, direto, cria CURIOSIDADE em português.
+- tema: Tópico específico em 3 palavras máximo.
+- inicio_sugerido: A primeira frase do clipe que faz sentido como PONTO DE PARTIDA. Deve ser uma frase real do [ANTES] ou [SEGMENTO].
+- Cada clipe deve ser sobre um TÓPICO DIFERENTE. Duplicatas desperdiçam vagas.
+- Se for chato: {"bom": false, "categoria": "", "score_viral": 0, "titulo": "", "hook_text": "", "motivo": "", "tema": "", "inicio_sugerido": ""}
+- NÃO seja generoso demais. Maioria de conteúdo de podcast é 3-5. Só momentos excepcionais ganham 7+."""
+
+
+FOCUS_DESCRICOES = {
+    "engraçado": (
+        "APENAS momentos ENGRAÇADOS. Procure piadas, humor, risadas, reações cômicas, "
+        "sarcasmo, situações ridículas, zoeira, momentos de pegadinha. "
+        "O espectador deve rir. Rejeite qualquer coisa que não seja genuinamente engraçada."
+    ),
+    "drama": (
+        "APENAS momentos DRAMÁTICOS. Procure confrontos, discussões acaloradas, tensão "
+        "entre os participantes, momentos desconfortáveis, alguém sendo exposto ou "
+        "desmascarado. Alta intensidade emocional com conflito."
+    ),
+    "reflexão": (
+        "APENAS momentos REFLEXIVOS. Procure pensamentos profundos, insights filosóficos, "
+        "lições de vida, observações significativas, sabedoria, ideias que fazem pensar. "
+        "O espectador deve pensar 'que profundo'."
+    ),
+    "dica": (
+        "APENAS DICAS e CONSELHOS ÚTEIS. Procure conhecimento prático, life hacks, "
+        "recomendações, informações de como fazer, conselhos de especialista. "
+        "O espectador deve aprender algo valioso."
+    ),
+    "polêmica": (
+        "APENAS momentos POLÊMICOS. Procure opiniões fortes, takes ousados, discordâncias, "
+        "declarações provocativas, opiniões impopulares. Conteúdo que vai gerar debate "
+        "nos comentários."
+    ),
+    "storytelling": (
+        "APENAS momentos de STORYTELLING. Procure anedotas pessoais envolventes, narrativas "
+        "cativantes, conteúdo orientado por história com começo/meio/fim. "
+        "O espectador deve querer ouvir a história completa."
+    ),
+    "emocional": (
+        "APENAS momentos EMOCIONAIS. Procure vulnerabilidade, choro, emoção genuína, "
+        "momentos tocantes, nostalgia, gratidão, tristeza. "
+        "O espectador deve sentir algo profundamente."
+    ),
+    "viral": (
+        "Máximo potencial VIRAL. Momentos chocantes, citáveis, compartilháveis que farão "
+        "as pessoas pararem de rolar e mandarem pros amigos. Apenas reações nucleares."
+    ),
+}
+
+FOCUS_CATEGORIAS_HEURISTICA = {
+    "engraçado": ["engraçado"],
+    "drama": ["confronto", "escândalo"],
+    "reflexão": ["sério", "motivacional"],
+    "dica": [],
+    "polêmica": ["polêmica"],
+    "storytelling": ["revelação"],
+    "emocional": ["emocionante"],
+    "viral": [],
+}
+
+FOCUS_IA_KEYWORDS = {
+    "engraçado": ["humor", "engraç", "comedia", "piada", "engrac", "funny", "riso", "engraçad"],
+    "drama": ["confront", "escand", "drama", "conflit", "briga", "discuss", "tens", "expo"],
+    "reflexão": ["reflex", "serio", "filosof", "motivac", "licao", "sabed", "profund", "pensar"],
+    "dica": ["dica", "conselh", "informac", "tutorial", "educac", "util", "pratic"],
+    "polêmica": ["polem", "controver", "debate", "opiniao", "discord"],
+    "storytelling": ["historia", "narrativ", "relato", "story", "anecdota", "cont"],
+    "emocional": ["emocion", "emoc", "choro", "vulnerab", "sentiment", "tocant", "saudade", "nostalg"],
+    "viral": [],
+}
 
 
 def _usar_ollama():
@@ -123,7 +188,12 @@ def _chamar_openai(system_prompt, user_content):
     return resposta.choices[0].message.content.strip()
 
 
-def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
+def _overlap_intervalo(ini1, fim1, ini2, fim2, min_overlap=10):
+    overlap = min(fim1, fim2) - max(ini1, ini2)
+    return overlap > min_overlap
+
+
+def detectar_highlights(transcricao, picos_audio=None, max_cortes=5, focus_tag=None, excluir_intervalos=None):
     segmentos = transcricao.get("segmentos", [])
     if not segmentos:
         print("  [ERRO] Nenhum segmento na transcrição")
@@ -138,10 +208,32 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
         print(f"  [ERRO] Nem Ollama nem OpenAI disponíveis")
         return []
 
-    candidatos = _gerar_candidatos(segmentos, picos_audio, max_cortes * 5)
+    if focus_tag:
+        print(f"  🎯 Foco: {focus_tag}")
+
+    num_candidatos = max_cortes * 8 if focus_tag else max_cortes * 5
+    candidatos = _gerar_candidatos(segmentos, picos_audio, num_candidatos)
     if not candidatos:
         print("  [ERRO] Nenhum candidato gerado")
         return []
+
+    if excluir_intervalos:
+        antes = len(candidatos)
+        candidatos = [
+            c for c in candidatos
+            if not any(
+                _overlap_intervalo(c["inicio_seg"], c["fim_seg"], ei, ef)
+                for ei, ef in excluir_intervalos
+            )
+        ]
+        print(f"  Excluindo {antes - len(candidatos)} candidatos sobrepostos com cortes existentes")
+
+    if focus_tag and focus_tag in FOCUS_CATEGORIAS_HEURISTICA:
+        cats_foco = FOCUS_CATEGORIAS_HEURISTICA[focus_tag]
+        if cats_foco:
+            for c in candidatos:
+                if c.get("categoria") in cats_foco:
+                    c["peso"] = c.get("peso", 0) + 10
 
     print(f"  {len(candidatos)} candidatos encontrados:")
     cats_count = {}
@@ -151,9 +243,21 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
     for cat, count in sorted(cats_count.items(), key=lambda x: -x[1]):
         print(f"    {cat}: {count}")
     print(f"  Avaliando com IA (paralelo)...")
-    avaliados = _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, segmentos)
+    avaliados = _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, segmentos, focus_tag=focus_tag)
 
     avaliados.sort(key=lambda x: x.get("score_viral") or 0, reverse=True)
+
+    if focus_tag and focus_tag in FOCUS_IA_KEYWORDS:
+        keywords = FOCUS_IA_KEYWORDS[focus_tag]
+        if keywords:
+            antes = len(avaliados)
+            avaliados = [
+                c for c in avaliados
+                if any(kw in (c.get("tipo", "") + c.get("motivo", "") + c.get("tema", "")).lower() for kw in keywords)
+                or c.get("score_viral", 0) >= 8
+            ]
+            print(f"  Filtro pós-IA ({focus_tag}): {antes} -> {len(avaliados)} cortes")
+
     avaliados = _validar_e_corrigir(avaliados, segmentos)
     avaliados = _remover_temas_duplicados(avaliados)
     avaliados = avaliados[:max_cortes]
@@ -168,7 +272,16 @@ def detectar_highlights(transcricao, picos_audio=None, max_cortes=5):
     return avaliados
 
 
-def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, segmentos, max_workers=4):
+def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, segmentos, max_workers=4, focus_tag=None):
+    prompt = PROMPT_AVALIAR
+    if focus_tag and focus_tag in FOCUS_DESCRICOES:
+        prompt = PROMPT_AVALIAR + "\n\n" + (
+            f">>> FOCO DE CATEGORIA: {focus_tag.upper()} <<<\n"
+            f"{FOCUS_DESCRICOES[focus_tag]}\n\n"
+            f"IMPORTANTE: Se o segmento NÃO corresponde a este foco de categoria, "
+            f"responda com {{\"bom\": false}}. Aprove apenas segmentos que se encaixam claramente."
+        )
+
     avaliados = []
     total = len(candidatos)
 
@@ -181,7 +294,7 @@ def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, segmentos, max_w
 
         try:
             contexto = _construir_contexto(segmentos, cand["inicio_seg"], cand["fim_seg"])
-            conteudo = _chamar_ia(PROMPT_AVALIAR, contexto, ollama_disponivel)
+            conteudo = _chamar_ia(prompt, contexto, ollama_disponivel)
             resultado = _parsear_resposta_bruta(conteudo)
             if isinstance(resultado, list):
                 resultado = resultado[0] if resultado else {}
@@ -198,10 +311,17 @@ def _avaliar_candidatos_paralelo(candidatos, ollama_disponivel, segmentos, max_w
                     resultado["inicio_seg"] = novo_inicio
 
             score = resultado.get("score_viral") or 0
-            if resultado.get("bom", False) or score >= 5:
+            if focus_tag:
+                aprovado = resultado.get("bom", False) and score >= 4
+            else:
+                aprovado = resultado.get("bom", False) or score >= 5
+            if aprovado:
                 resultado["tipo"] = resultado.get("categoria", cat_preliminar)
-                resultado["tags"] = ["reels", "viral", "fyp", "shorts", "trending"]
-                resultado["descricao"] = "#reels #viral #fyp #shorts #trending"
+                tag_list = ["reels", "viral", "fyp", "shorts", "trending"]
+                if focus_tag:
+                    tag_list.insert(0, focus_tag)
+                resultado["tags"] = tag_list
+                resultado["descricao"] = " ".join(f"#{t}" for t in tag_list)
                 if not resultado.get("hook_text"):
                     resultado["hook_text"] = _hook_do_texto(texto)
                 if not resultado.get("titulo"):
@@ -702,10 +822,10 @@ def _construir_contexto(segmentos, inicio_seg, fim_seg, contexto_antes=45, conte
 
     partes = []
     if texto_antes.strip():
-        partes.append(f"[BEFORE - what leads into the moment]:\n{texto_antes.strip()}")
-    partes.append(f"[SEGMENT - the actual clip]:\n{texto_seg.strip()}")
+        partes.append(f"[ANTES - o que leva ao momento]:\n{texto_antes.strip()}")
+    partes.append(f"[SEGMENTO - o clipe em si]:\n{texto_seg.strip()}")
     if texto_depois.strip():
-        partes.append(f"[AFTER - what follows]:\n{texto_depois.strip()}")
+        partes.append(f"[DEPOIS - o que segue]:\n{texto_depois.strip()}")
 
     return "\n\n".join(partes)
 

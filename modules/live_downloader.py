@@ -1,7 +1,10 @@
 import os
 import re
+import sys
 import subprocess
 from config import PASTA_TEMP
+
+YTDLP = [sys.executable, "-m", "yt_dlp"]
 
 
 def _extrair_video_id(url):
@@ -64,7 +67,7 @@ def baixar_live(url, qualidade=None, pasta_saida=None):
         )
 
     cmd = [
-        "yt-dlp",
+        *YTDLP,
         "-f", qualidade,
         "-o", saida_template,
         "--no-playlist",
@@ -85,8 +88,7 @@ def baixar_live(url, qualidade=None, pasta_saida=None):
         if resultado.returncode != 0:
             print(f"  [AVISO] Tentando formato alternativo...")
             cmd_fallback = [
-                "yt-dlp",
-                "-f", "best",
+                *YTDLP,
                 "-o", saida_template,
                 "--no-playlist",
                 "--merge-output-format", "mp4",
