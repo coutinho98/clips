@@ -10,3 +10,8 @@ openai-whisper>=20231117
 faster-whisper>=0.10.0
 numpy>=1.24.0
 opencv-python>=4.8.0
+
+# Postagem automática (YouTube Shorts)
+google-api-python-client>=2.100.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.2.0
