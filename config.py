@@ -34,6 +34,11 @@ YOUTUBE_PRIVACY = os.getenv("YOUTUBE_PRIVACY", "public")
 
 TIKTOK_ACCESS_TOKEN = os.getenv("TIKTOK_ACCESS_TOKEN")
 TIKTOK_PRIVACY = os.getenv("TIKTOK_PRIVACY", "PUBLIC_TO_EVERYONE")
+TIKTOK_SCOPES = os.getenv("TIKTOK_SCOPES", "video.upload,user.info.basic")
+TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY")
+TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET")
+TIKTOK_REDIRECT_URI = os.getenv("TIKTOK_REDIRECT_URI", "http://localhost:9876/callback")
+TIKTOK_TOKEN_PATH = os.path.join(PASTA_SECRETS, "tiktok_token.json")
 
 POSTAR_PLATAFORMAS = [
     p.strip().lower()

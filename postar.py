@@ -208,6 +208,7 @@ def _postar_em(plataforma, video_path, meta):
 def main():
     parser = argparse.ArgumentParser(description="Posta vídeos da fila no YouTube + TikTok")
     parser.add_argument("--auth-youtube", action="store_true", help="Autenticação OAuth do YouTube (1ª vez, interativo)")
+    parser.add_argument("--auth-tiktok", action="store_true", help="Autenticação OAuth do TikTok (1ª vez, interativo)")
     parser.add_argument("--plataformas", help="Plataforma(s) desta execução (ex: youtube). Default: todas")
     parser.add_argument("--um", action="store_true", help="Postar só 1 vídeo por plataforma e sair")
     parser.add_argument("--dry-run", action="store_true", help="Simular sem postar")
@@ -215,6 +216,11 @@ def main():
 
     if args.auth_youtube:
         from modules.youtube_uploader import autenticar
+        ok = autenticar()
+        sys.exit(0 if ok else 1)
+
+    if args.auth_tiktok:
+        from modules.tiktok_uploader import autenticar
         ok = autenticar()
         sys.exit(0 if ok else 1)
 
